@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="760" viewBox="0 0 920 760" role="img" aria-labelledby="title desc">
+  <title id="title">Kicktipp World Cup Predictor CLI output preview</title>
+  <desc id="desc">Terminal preview showing the actual output of a Netherlands versus Japan prediction run.</desc>
+  <defs>
+    <linearGradient id="terminal-bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#121820"/>
+      <stop offset="1" stop-color="#0b1017"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#0b1020" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="48" y="42" width="824" height="676" rx="10" fill="url(#terminal-bg)"/>
+    <rect x="48.5" y="42.5" width="823" height="675" rx="9.5" fill="none" stroke="#25313f"/>
+    <rect x="48" y="42" width="824" height="44" rx="10" fill="#1d2630"/>
+    <path d="M48 76h824v18H48z" fill="#1d2630"/>
+    <circle cx="76" cy="64" r="6" fill="#ff5f57"/>
+    <circle cx="96" cy="64" r="6" fill="#ffbd2e"/>
+    <circle cx="116" cy="64" r="6" fill="#28c840"/>
+    <text x="460" y="69" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#9aa6b2">kicktipp-worldcup-predictor</text>
+
+    <text x="76" y="123" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#8be9fd">
+      <tspan fill="#7dd3fc">$ </tspan><tspan fill="#d9e2ec">python kicktipp_tool.py predict --team-a "Netherlands" --team-b "Japan"</tspan>
+    </text>
+
+    <text x="76" y="162" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#d9e2ec" xml:space="preserve">
+      <tspan x="76" dy="0" fill="#67e8f9">┌─ Netherlands vs Japan ────────────────────────────────┐</tspan>
+      <tspan x="76" dy="24"><tspan fill="#67e8f9">│</tspan> Pick: Netherlands 1–0 Japan                           <tspan fill="#67e8f9">│</tspan></tspan>
+      <tspan x="76" dy="24"><tspan fill="#67e8f9">│</tspan> Confidence: Netherlands win 43.9%                     <tspan fill="#67e8f9">│</tspan></tspan>
+      <tspan x="76" dy="24"><tspan fill="#67e8f9">│</tspan> Exact score probability: 9.5%                         <tspan fill="#67e8f9">│</tspan></tspan>
+      <tspan x="76" dy="24"><tspan fill="#67e8f9">│</tspan> Expected points: 1.18                                 <tspan fill="#67e8f9">│</tspan></tspan>
+      <tspan x="76" dy="24" fill="#67e8f9">└───────────────────────────────────────────────────────┘</tspan>
+
+      <tspan x="76" dy="38" fill="#67e8f9">Key model signals</tspan>
+      <tspan x="76" dy="24">  xG              Netherlands 1.45   Japan 1.05</tspan>
+      <tspan x="76" dy="24">  Total goals     2.50</tspan>
+      <tspan x="76" dy="24">  Handicap        Netherlands +0.40</tspan>
+      <tspan x="76" dy="24">  Elo             Netherlands +55</tspan>
+
+      <tspan x="76" dy="38" fill="#67e8f9">1X2 probabilities</tspan>
+      <tspan x="76" dy="24">  Netherlands     50.0%</tspan>
+      <tspan x="76" dy="24">  Draw            26.1%</tspan>
+      <tspan x="76" dy="24">  Japan           23.9%</tspan>
+
+      <tspan x="76" dy="38" fill="#67e8f9">Top scorelines</tspan>
+      <tspan x="76" dy="24">  1. 1–0  Netherlands win   EV 1.18   Prob  9.5%</tspan>
+      <tspan x="76" dy="24">  2. 2–1  Netherlands win   EV 1.18   Prob  9.1%</tspan>
+      <tspan x="76" dy="24">  3. 3–2  Netherlands win   EV 1.11   Prob  2.3%</tspan>
+      <tspan x="76" dy="24">  4. 2–0  Netherlands win   EV 1.10   Prob  8.6%</tspan>
+      <tspan x="76" dy="24">  5. 4–3  Netherlands win   EV 1.09   Prob  0.3%</tspan>
+    </text>
+  </g>
+</svg>

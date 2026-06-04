@@ -419,8 +419,11 @@ def test_predict_output_explains_exact_probability_and_summarizes_tendency(
     assert kicktipp_tool.run_predict(args) == 0
 
     output = capsys.readouterr().out
+    output_lines = output.splitlines()
     plain_output = _plain(output)
     assert "\x1b[" in output
+    assert output_lines[1].startswith("\x1b[1;36m│\x1b[0m Pick:")
+    assert output_lines[1].endswith("\x1b[1;36m│\x1b[0m")
     assert "┌─ Mexico vs South Africa" in plain_output
     assert "│ Pick: Mexico 2–0 South Africa" in plain_output
     assert "│ Confidence: Mexico win 72.3%" in plain_output

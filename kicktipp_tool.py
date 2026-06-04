@@ -95,7 +95,11 @@ def _boxed_summary(
     bottom = "└" + "─" * (width + 2) + "┘"
     return [
         _color(top, "1", "36"),
-        *(f"│ {line.ljust(width)} │" for line in lines),
+        *(
+            f"{_color('│', '1', '36')} {line.ljust(width)} "
+            f"{_color('│', '1', '36')}"
+            for line in lines
+        ),
         _color(bottom, "1", "36"),
     ]
 

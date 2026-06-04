@@ -28,6 +28,7 @@ htmlcov/
 # Local runtime data
 cache/
 *.log
+.superpowers/
 
 # Build artifacts
 build/

@@ -8,16 +8,13 @@ tip with Kicktipp's points logic.
 The tool is designed for World Cup matches, but it can be used for other
 football competitions when the configured data sources support them.
 
+## Preview
+
+![CLI preview showing a Netherlands vs Japan prediction](docs/assets/cli-preview.svg)
+
 ## Default Usage
 
-Use this prompt as the default match prediction request:
-
-```bash
-python kicktipp_tool.py predict --team-a "some team" --team-b "another team" --match-date 2026-06-11
-```
-
-When running directly from this checkout, use the same arguments after the
-Python entry point:
+For a quick prediction, pass the two teams and the match date:
 
 ```bash
 python kicktipp_tool.py predict \
@@ -26,11 +23,15 @@ python kicktipp_tool.py predict \
   --match-date 2026-06-11
 ```
 
-By default, the tool tries all configured probability sources, reads cached API
-responses when they are still fresh, and loads Elo ratings from
-`data/elo_ratings.csv` before falling back to the remote Elo source. If the
-available APIs cannot provide an expected total-goals line, pass
-`--total-goals` manually.
+With the default settings, the tool:
+
+- tries every configured probability source
+- reuses fresh cached API responses
+- loads Elo ratings from `data/elo_ratings.csv`
+- falls back to the remote Elo source if a local rating is missing
+
+If none of the configured APIs can provide an expected total-goals line, add
+`--total-goals` yourself:
 
 ```bash
 python kicktipp_tool.py predict \
@@ -40,7 +41,7 @@ python kicktipp_tool.py predict \
   --total-goals 2.45
 ```
 
-Add `--refresh` when you want fresh API data instead of reusable cache data.
+To ignore reusable cache data and fetch fresh API responses, add `--refresh`.
 
 ## What It Does
 
