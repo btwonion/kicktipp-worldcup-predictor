@@ -1,37 +1,83 @@
-# Kicktipp Worldcup Predictor
+# Kicktipp World Cup Predictor
 
-Ein kleines lokales Python-Tool, das für Fussballspiele Kicktipp-Tipps nach Erwartungswert sortiert. Es nutzt ein Poisson-Modell für exakte Ergebniswahrscheinlichkeiten und bewertet jeden moeglichen Tipp mit der Kicktipp-Punktelogik.
+Local Python CLI for ranking football score predictions by expected Kicktipp
+points. It combines 1X2 probabilities, expected total goals, Elo ratings, and
+optional spread markets into a Poisson score model, then scores every candidate
+tip with Kicktipp's points logic.
 
-Das Tool ist auf WM-Spiele und andere Fussballspiele anwendbar. Standardmäßig nutzt es alle verfügbaren Datenquellen automatisch. Für erwartete Gesamttore verwendet es entweder manuelle Werte oder automatisch geladene Over/Under-Quoten; ohne solche Daten bricht es bewusst ab.
+The tool is designed for World Cup matches, but it can be used for other
+football competitions when the configured data sources support them.
 
-## Was das Tool macht
+## Default Usage
 
-- lädt Spielpaarungen, 1X2-Wahrscheinlichkeiten und, sofern verfügbar, Total-Goals-Quoten automatisch aus den verfügbaren Quellen
-- lädt Elo-Ratings aus einer lokalen CSV-Datei, per Remote-Quelle oder akzeptiert manuelle Elo-Werte
-- akzeptiert manuelle Werte als Override, wenn eine Quelle fehlt oder bewusst überschrieben werden soll
-- leitet daraus erwartete Tore für Team A und Team B ab
-- nutzt automatisch Handicap-/Spread-Quoten, wenn The Odds API sie liefert, um klare Favoriten besser abzubilden
-- erzeugt eine normalisierte Score-Matrix, standardmässig bis 6:6
-- berechnet für jeden Tipp bis 5:5 den erwarteten Kicktipp-Punktwert
-- gibt den besten Tipp und die Top 5 aus
+Use this prompt as the default match prediction request:
 
-## Was es nicht kann
-
-Dieses Tool gibt keine sicheren Vorhersagen. Es optimiert Tipps anhand modellierter Wahrscheinlichkeiten und der Kicktipp-Punktelogik. Die Qualität hängt stark von aktuellen Eingabedaten wie Quoten, Aufstellungen, Verletzungen und Teamstärke ab.
-
-Es ersetzt keine Marktanalyse und keine aktuellen Team-News. Fehlende 1X2-Daten werden aus der nächsten verfügbaren Quelle geladen. Fehlende erwartete Gesamttore werden nicht still geschätzt, weil dieser Wert die Score-Verteilung stark beeinflusst.
-
-## Warum Erwartungswert wichtiger ist als der wahrscheinlichste Score
-
-Kicktipp belohnt nicht nur exakte Ergebnisse. Ein 1:0-Tipp bekommt auch Punkte für andere Siege mit gleicher Tordifferenz oder gleicher Tendenz. Deshalb kann der beste Kicktipp-Tipp ein anderer sein als das wahrscheinlichste einzelne Ergebnis.
-
-Das Tool berechnet:
-
-```text
-EV(tipp) = Summe P(tatsächliches Ergebnis) * KicktippPunkte(tipp, tatsächliches Ergebnis)
+```bash
+predict --team-a "some team" --team-b "another team" --match-date 2026-06-11
 ```
 
-Dadurch wird direkt auf den erwarteten Punktwert optimiert.
+When running directly from this checkout, use the same arguments after the
+Python entry point:
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "some team" \
+  --team-b "another team" \
+  --match-date 2026-06-11
+```
+
+By default, the tool tries all configured probability sources, reads cached API
+responses when they are still fresh, and loads Elo ratings from
+`data/elo_ratings.csv` before falling back to the remote Elo source. If the
+available APIs cannot provide an expected total-goals line, pass
+`--total-goals` manually.
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "some team" \
+  --team-b "another team" \
+  --match-date 2026-06-11 \
+  --total-goals 2.45
+```
+
+Add `--refresh` when you want fresh API data instead of reusable cache data.
+
+## What It Does
+
+- fetches match probabilities from The Odds API, football-data.org, or
+  API-Football, depending on what is configured and available
+- derives expected total goals from Over/Under markets when possible
+- uses balanced spread markets from The Odds API to model stronger favorites
+  more realistically
+- loads Elo ratings from local CSV data, a remote Elo table, or manual inputs
+- converts the inputs into expected goals for both teams
+- builds a normalized score-probability matrix, by default up to 6:6
+- ranks all candidate tips, by default up to 5:5, by expected Kicktipp points
+- prints the best tip, expected points, exact-score probability, tendency
+  probability, and top alternatives
+
+## What It Does Not Do
+
+This is not a certainty engine. It optimizes a Kicktipp tip against modeled
+probabilities and the Kicktipp scoring rules. Prediction quality depends on the
+quality and freshness of odds, team news, injuries, lineups, and ratings.
+
+The tool deliberately does not guess expected total goals when neither a market
+line nor a manual value is available. Total goals strongly shape the score
+distribution, so silent fallback values would make the recommendation look more
+confident than it is.
+
+## Why Expected Points Matter
+
+Kicktipp does not only reward exact scores. A `1:0` prediction can still score
+points for other home wins with the same tendency or goal difference. Because of
+that, the best Kicktipp tip can differ from the single most likely exact score.
+
+The model optimizes this value:
+
+```text
+EV(tip) = sum P(actual score) * KicktippPoints(tip, actual score)
+```
 
 ## Installation
 
@@ -41,102 +87,99 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Standardnutzung
+## API Keys
 
-Das Tool geht davon aus, dass alle Datenquellen grundsätzlich verfügbar sind. Du gibst im Normalfall die Partie an. Das Programm probiert automatisch die konfigurierten Quellen, nutzt Cache-Dateien und lädt Elo-Ratings zuerst aus `data/elo_ratings.csv`, falls die Datei existiert. Wenn lokale Elo-Werte fehlen, wird automatisch eine Remote-Elo-Quelle abgefragt.
-
-Für erwartete Gesamttore gilt: Wenn The Odds API einen `totals`-Markt liefert, wird daraus automatisch eine Torlinie abgeleitet. Andernfalls musst du `--total-goals` setzen.
-
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --total-goals 2.45
-```
-
-Für Quellen, die eine Tagesliste oder Fixture-Suche brauchen, gib zusätzlich das Spieldatum an:
-
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --match-date 2026-06-11 \
-  --total-goals 2.45
-```
-
-Für frische API-Daten statt Cache:
-
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --match-date 2026-06-11 \
-  --total-goals 2.45 \
-  --refresh
-```
-
-Ohne `--refresh` verwendet das Tool API- und Remote-Elo-Cache nur, wenn die Cache-Datei höchstens einen Tag alt ist. Ältere Cache-Dateien lösen automatisch einen neuen API-Abruf aus. Cache-Verhalten kann explizit gesteuert werden:
-
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --cache-dir /tmp/kicktipp-cache \
-  --cache-ttl 6
-```
-
-`--cache-ttl` ist in Stunden angegeben. `--no-cache` überspringt Lesen und Schreiben des Cache vollständig.
-
-## API-Keys
-
-Kopiere `.env.example` nach `.env` und trage alle verfügbaren Keys ein:
+Copy `.env.example` to `.env` and add the keys you have:
 
 ```bash
 cp .env.example .env
 ```
 
 ```dotenv
-THE_ODDS_API_KEY=dein_key
-FOOTBALL_DATA_API_KEY=dein_key
-API_FOOTBALL_KEY=dein_key
+THE_ODDS_API_KEY=your_key
+FOOTBALL_DATA_API_KEY=your_key
+API_FOOTBALL_KEY=your_key
 ```
 
-Die automatische 1X2-Suche probiert standardmäßig:
+The automatic probability lookup tries these sources in order:
 
 1. The Odds API
 2. football-data.org
 3. API-Football predictions
 
-Wenn eine Quelle nicht konfiguriert ist, keine Daten für die Partie findet oder weitere Angaben wie `--match-date` fehlen, wird die nächste Quelle probiert.
+If a source is not configured, does not find the match, or needs missing context
+such as `--match-date`, the tool tries the next source.
 
-The Odds API wird mit `h2h,spreads,totals` abgefragt. `h2h` liefert die 1X2-Wahrscheinlichkeiten, `totals` liefert Over/Under-Linien für die automatische Gesamttor-Schätzung. Falls keine `totals` im Response enthalten sind, setze `--total-goals`.
+## Data Sources
 
-The Odds API wird außerdem mit `spreads` abgefragt. Wenn ein Handicap-/Spread-Markt für die Partie verfügbar ist, nutzt das Tool die ausgewogenste Spread-Linie der Bookmaker als erwartete Tordifferenz. Zusammen mit der Total-Goals-Linie ergibt das direkt die erwarteten Tore beider Teams. Dadurch können klare Favoriten bei passender Marktlage automatisch von konservativen Tipps wie `2:0` in Richtung `3:0` oder `4:0` rücken.
+### The Odds API
 
-Wenn keine Spread-Daten verfügbar sind, bleibt die bisherige konservative 1X2-basierte Herleitung aktiv. Das ist bewusst so: 1X2-Quoten und Gesamttore allein sagen nicht zuverlässig, wie stark ein Favorit gewinnt.
-
-## Manuelle Overrides
-
-Du kannst 1X2-Wahrscheinlichkeiten und erwartete Gesamttore weiterhin direkt übergeben. Manuelle 1X2-Werte haben Vorrang vor allen APIs:
+The default sport key is `soccer_fifa_world_cup`. For other competitions, pass a
+valid The Odds API sport key such as `soccer_epl`.
 
 ```bash
 python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
+  --team-a "some team" \
+  --team-b "another team" \
+  --match-date 2026-06-11 \
+  --use-odds-api \
+  --odds-sport-key soccer_fifa_world_cup
+```
+
+The tool requests `h2h`, `spreads`, and `totals` markets. `h2h` provides 1X2
+probabilities, `totals` can provide the expected total-goals line, and `spreads`
+can provide an expected goal difference. When spreads are unavailable, the model
+falls back to the more conservative 1X2-based derivation.
+
+### football-data.org
+
+Use a match ID when you know it:
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "some team" \
+  --team-b "another team" \
+  --use-football-data \
+  --football-data-match-id 123456
+```
+
+Or pass `--match-date YYYY-MM-DD` so the tool can search the daily match list.
+
+### API-Football
+
+Use a fixture ID when you know it:
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "some team" \
+  --team-b "another team" \
+  --use-api-football \
+  --api-football-fixture-id 123456
+```
+
+Or pass `--match-date YYYY-MM-DD` so the tool can find the fixture before
+loading API-Football predictions.
+
+## Manual Overrides
+
+Manual 1X2 probabilities and total goals take precedence over API data:
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "some team" \
+  --team-b "another team" \
   --p-a 0.36 \
   --p-draw 0.29 \
   --p-b 0.35 \
-  --total-goals 2.45 \
-  --max-goals 6 \
-  --tip-max-goals 5
+  --total-goals 2.45
 ```
 
-Mit manuellem Elo:
+Manual Elo values also override local and remote Elo data:
 
 ```bash
 python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
+  --team-a "some team" \
+  --team-b "another team" \
   --p-a 0.36 \
   --p-draw 0.29 \
   --p-b 0.35 \
@@ -145,12 +188,17 @@ python kicktipp_tool.py predict \
   --elo-b 2081
 ```
 
-Für Automatisierung gibt es JSON-Ausgabe:
+Use `--max-goals` to control the modeled score matrix and `--tip-max-goals` to
+control the highest candidate tip score.
+
+## Output Modes
+
+For automation, use JSON output:
 
 ```bash
 python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
+  --team-a "some team" \
+  --team-b "another team" \
   --p-a 0.36 \
   --p-draw 0.29 \
   --p-b 0.35 \
@@ -158,54 +206,30 @@ python kicktipp_tool.py predict \
   --json
 ```
 
-Für Skripte, die nur den Tipp brauchen, gibt `--quiet` nur das Ergebnis aus, zum Beispiel `1:1`.
+For scripts that only need the recommended score, use `--quiet`. It prints only
+the tip, for example `1:1`.
 
-## Quellen gezielt einschränken
+## Cache Behavior
 
-Die API-Flags sind nicht mehr nötig. Sobald mindestens ein Quellen-Flag gesetzt ist, probiert das Tool nur diese ausgewählten Quellen.
-
-Nur The Odds API:
-
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --use-odds-api \
-  --odds-sport-key soccer_fifa_world_cup \
-  --refresh
-```
-
-Der Default für `--odds-sport-key` ist `soccer_fifa_world_cup`. Für andere Wettbewerbe muss ein gültiger The-Odds-API-Sport-Key gesetzt werden, zum Beispiel `soccer_epl`. API-Antworten werden unter `cache/` gespeichert. Ohne `--refresh` verwendet das Tool Cache-Dateien nur, wenn sie höchstens einen Tag alt sind.
-
-football-data.org:
+Without `--refresh`, API and remote Elo responses are reused only while the
+cache file is still fresh. The default TTL is 24 hours. Older cache entries
+trigger a new request automatically.
 
 ```bash
 python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --use-football-data \
-  --football-data-match-id 123456 \
-  --refresh
+  --team-a "some team" \
+  --team-b "another team" \
+  --match-date 2026-06-11 \
+  --cache-dir /tmp/kicktipp-cache \
+  --cache-ttl 6
 ```
 
-Alternativ kann `--match-date YYYY-MM-DD` genutzt werden, wenn die Partie ueber die Tagesliste gefunden werden soll.
+`--cache-ttl` is measured in hours. `--no-cache` disables both reading and
+writing cache files.
 
-API-Football:
+## Elo Ratings
 
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
-  --use-api-football \
-  --api-football-fixture-id 123456 \
-  --refresh
-```
-
-Alternativ kann `--match-date YYYY-MM-DD` genutzt werden; dann sucht das Tool zuerst das passende Fixture und lädt danach die API-Football-Prognose.
-
-## Elo-Ratings
-
-Lege optional `data/elo_ratings.csv` an:
+The default local Elo file is `data/elo_ratings.csv`:
 
 ```csv
 team,elo
@@ -213,40 +237,34 @@ Argentina,2113
 France,2081
 ```
 
-Danach:
+Elo is enabled by default. If a team rating is missing, the tool continues with
+a neutral Elo value. Use `--no-elo` to disable Elo loading.
+
+The Elo priority order is:
+
+1. manual `--elo-a` and `--elo-b`
+2. local `--elo-path` CSV, defaulting to `data/elo_ratings.csv`
+3. remote Elo data, defaulting to `international-football.net` for the current
+   date
+
+You can point `--elo-url` at another CSV or HTML source when it contains one of
+the supported formats, such as `team,elo`, `country,rating`, `club,elo`, or a
+ranked table like `1. Team 2139`.
 
 ```bash
 python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France"
-```
-
-Elo wird standardmäßig geladen. Wenn ein Elo-Wert fehlt, läuft das Tool mit neutralem Elo weiter. Mit `--no-elo` deaktivierst du Elo gezielt.
-
-Die Reihenfolge ist:
-
-1. manuelle `--elo-a`/`--elo-b`
-2. lokale `--elo-path` CSV, standardmäßig `data/elo_ratings.csv`
-3. Remote-Elo, standardmäßig `international-football.net` für das aktuelle Datum
-
-`international-football.net` veröffentlicht Nationalteam-Elo-Tabellen nach Datum und weist sie als von `eloratings.net` berechnet aus. Die Remote-Antwort wird unter `cache/` gespeichert; Cache-Dateien älter als ein Tag werden automatisch neu abgerufen, mit `--refresh` wird der Cache immer übersprungen.
-
-Du kannst eine andere CSV- oder HTML-Quelle setzen, solange sie `team,elo`, `country,rating`, `club,elo` oder eine Rangliste im Format `1. Team 2139` enthält:
-
-```bash
-python kicktipp_tool.py predict \
-  --team-a "Argentina" \
-  --team-b "France" \
+  --team-a "some team" \
+  --team-b "another team" \
   --elo-url "https://www.international-football.net/elo-ratings-table?day=04&month=06&year=2026"
 ```
 
 ## Fixtures
 
-`data_sources.load_fixtures_from_openfootball(path_or_url)` kann OpenFootball-JSON laden, lokal oder per URL. Die CLI ist bewusst auf die Tipp-Erzeugung fokussiert; Fixtures koennen als Adapter-Funktion in eigene Workflows eingebunden werden.
+`data_sources.load_fixtures_from_openfootball(path_or_url)` can load
+OpenFootball JSON from a local path or URL. The CLI stays focused on generating
+tips, so fixture loading is exposed as an adapter for custom workflows.
 
 ## Tests
-
-Tests sind verpflichtend und liegen unter `tests/`.
 
 ```bash
 python -m pytest
@@ -254,14 +272,14 @@ ruff check .
 mypy .
 ```
 
-## Dateien
+## Project Map
 
-- `kicktipp_tool.py`: CLI
-- `models.py`: Poisson-Modell, Lambda-Herleitung und typed result models
-- `scoring.py`: Kicktipp-Punkte, EV und Ranking
-- `data_sources/cache.py`: Cache-Pfade, TTL und Lesen/Schreiben
-- `data_sources/elo.py`: lokale und Remote-Elo-Ratings
-- `data_sources/fixtures.py`: OpenFootball-Fixtures
-- `data_sources/providers/`: The Odds API, football-data.org und API-Football
-- `data_sources/team_matching.py`: Alias-, Akzent- und Fuzzy-Matching
-- `config.py`: `.env`-Konfiguration
+- `kicktipp_tool.py`: CLI and prediction workflow
+- `models.py`: Poisson model, lambda derivation, and typed result models
+- `scoring.py`: Kicktipp points, expected value, and ranking
+- `data_sources/cache.py`: cache paths, TTL handling, reads, and writes
+- `data_sources/elo.py`: local and remote Elo ratings
+- `data_sources/fixtures.py`: OpenFootball fixture loading
+- `data_sources/providers/`: The Odds API, football-data.org, and API-Football
+- `data_sources/team_matching.py`: alias, accent, and fuzzy team matching
+- `config.py`: `.env` configuration
