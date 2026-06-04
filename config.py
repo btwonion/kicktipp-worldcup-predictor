@@ -3,11 +3,15 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+_load_dotenv: Any
 try:
-    from dotenv import load_dotenv
-except ImportError:  # pragma: no cover - dependency is declared, fallback keeps imports usable
-    load_dotenv = None
+    from dotenv import load_dotenv as _load_dotenv
+except ImportError:  # pragma: no cover - dependency is declared
+    _load_dotenv = None
+
+load_dotenv: Any = _load_dotenv
 
 
 ENV_PATH = Path(".env")
@@ -57,6 +61,7 @@ def load_settings(env_path: str | Path = ENV_PATH) -> Settings:
 def require_api_key(name: str, value: str | None) -> str:
     if not value:
         raise ValueError(
-            f"{name} fehlt. Trage den Key in .env ein oder nutze manuelle CLI-Parameter."
+            f"{name} fehlt. Trage den Key in .env ein oder nutze "
+            "manuelle CLI-Parameter."
         )
     return value

@@ -14,7 +14,6 @@ from ..elo import DataSourceUnavailable
 from ..team_matching import team_dict_matches
 from .base import ProviderContext
 
-
 API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
 
 

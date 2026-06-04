@@ -457,6 +457,77 @@ def test_predict_json_output(monkeypatch, capsys):
     assert payload["inputs"]["total_goals"] == pytest.approx(2.48)
 
 
+def test_predict_uses_market_goal_difference_when_available(monkeypatch):
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_probabilities",
+        lambda args: ProbabilityResult(
+            0.86,
+            0.09,
+            0.05,
+            "Test odds",
+            expected_total_goals=3.5,
+            total_goals_source="Test totals",
+            expected_goal_difference=2.5,
+            goal_difference_source="Test spreads",
+        ),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_total_goals",
+        lambda args, probabilities: (3.5, "Test totals"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_elo",
+        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+    )
+
+    calls = []
+
+    def fail_old_inference(*args):
+        raise AssertionError("1X2 inference should not run when spreads are available")
+
+    def market_inference(total_goals, expected_goal_difference):
+        calls.append((total_goals, expected_goal_difference))
+        return 3.0, 0.5
+
+    monkeypatch.setattr(kicktipp_tool, "infer_expected_goals", fail_old_inference)
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "infer_expected_goals_from_market_difference",
+        market_inference,
+    )
+    monkeypatch.setattr(kicktipp_tool, "build_score_matrix", lambda *args: {})
+    monkeypatch.setattr(
+        kicktipp_tool, "apply_low_score_adjustment", lambda matrix, rho: matrix
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "rank_tips",
+        lambda matrix, tip_max_goals: [
+            {
+                "score": (4, 0),
+                "expected_points": 2.1,
+                "exact_probability": 0.14,
+                "tendency_probability": 0.88,
+            }
+        ],
+    )
+    args = argparse.Namespace(
+        team_a="Portugal",
+        team_b="DR Congo",
+        max_goals=8,
+        tip_max_goals=5,
+        rho=-0.08,
+        output_json=True,
+        quiet=False,
+    )
+
+    assert kicktipp_tool.run_predict(args) == 0
+    assert calls == [(3.5, 2.5)]
+
+
 def test_predict_quiet_output(monkeypatch, capsys):
     monkeypatch.setattr(
         kicktipp_tool,

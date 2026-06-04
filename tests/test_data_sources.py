@@ -7,10 +7,10 @@ import pytest
 import data_sources
 from config import Settings
 from data_sources import (
-    fetch_remote_elo_ratings,
     fetch_odds_from_football_data,
     fetch_odds_from_the_odds_api,
     fetch_predictions_from_api_football,
+    fetch_remote_elo_ratings,
     load_elo_ratings,
     load_fixtures_from_openfootball,
     load_from_cache,
@@ -141,7 +141,8 @@ def test_odds_api_uses_cache_without_api_key_when_not_refreshing(tmp_path, monke
         "probabilities": {"p_a": 0.4, "p_draw": 0.3, "p_b": 0.3},
     }
     save_to_cache(
-        "the_odds_api:soccer_fifa_world_cup:eu:h2h_totals:Argentina:France", cached
+        "the_odds_api:soccer_fifa_world_cup:eu:h2h_spreads_totals:Argentina:France",
+        cached,
     )
 
     assert fetch_odds_from_the_odds_api("Argentina", "France") == cached
@@ -154,7 +155,9 @@ def test_odds_api_ignores_cache_older_than_one_day(tmp_path, monkeypatch):
         "load_settings",
         lambda: Settings(the_odds_api_key=None),
     )
-    cache_key = "the_odds_api:soccer_fifa_world_cup:eu:h2h_totals:Argentina:France"
+    cache_key = (
+        "the_odds_api:soccer_fifa_world_cup:eu:h2h_spreads_totals:Argentina:France"
+    )
     save_to_cache(
         cache_key,
         {
@@ -176,7 +179,9 @@ def test_no_cache_ignores_cached_api_payload(tmp_path, monkeypatch):
         "load_settings",
         lambda: Settings(the_odds_api_key=None),
     )
-    cache_key = "the_odds_api:soccer_fifa_world_cup:eu:h2h_totals:Argentina:France"
+    cache_key = (
+        "the_odds_api:soccer_fifa_world_cup:eu:h2h_spreads_totals:Argentina:France"
+    )
     save_to_cache(
         cache_key,
         {
@@ -238,11 +243,13 @@ def test_odds_api_default_uses_valid_world_cup_sport_key(tmp_path, monkeypatch):
 
     assert seen["url"].endswith("/v4/sports/soccer_fifa_world_cup/odds")
     assert seen["params"]["apiKey"] == "test-key"
-    assert seen["params"]["markets"] == "h2h,totals"
+    assert seen["params"]["markets"] == "h2h,spreads,totals"
     assert result["probabilities"]["p_a"] > 0
 
 
-def test_odds_api_extracts_total_goals_from_balanced_totals(tmp_path, monkeypatch):
+def test_odds_api_extracts_total_goals_and_goal_difference_markets(
+    tmp_path, monkeypatch
+):
     class FakeResponse:
         def raise_for_status(self):
             return None
@@ -273,6 +280,31 @@ def test_odds_api_extracts_total_goals_from_balanced_totals(tmp_path, monkeypatc
                                         {"name": "Under", "point": 3.5, "price": 1.45},
                                     ],
                                 },
+                                {
+                                    "key": "spreads",
+                                    "outcomes": [
+                                        {
+                                            "name": "Argentina",
+                                            "point": -2.5,
+                                            "price": 1.91,
+                                        },
+                                        {
+                                            "name": "France",
+                                            "point": 2.5,
+                                            "price": 1.91,
+                                        },
+                                        {
+                                            "name": "Argentina",
+                                            "point": -3.5,
+                                            "price": 2.8,
+                                        },
+                                        {
+                                            "name": "France",
+                                            "point": 3.5,
+                                            "price": 1.45,
+                                        },
+                                    ],
+                                },
                             ],
                         },
                         {
@@ -293,6 +325,21 @@ def test_odds_api_extracts_total_goals_from_balanced_totals(tmp_path, monkeypatc
                                         {"name": "Under", "point": 3.0, "price": 1.87},
                                     ],
                                 },
+                                {
+                                    "key": "spreads",
+                                    "outcomes": [
+                                        {
+                                            "name": "Argentina",
+                                            "point": -3.0,
+                                            "price": 1.95,
+                                        },
+                                        {
+                                            "name": "France",
+                                            "point": 3.0,
+                                            "price": 1.87,
+                                        },
+                                    ],
+                                },
                             ],
                         },
                     ],
@@ -310,6 +357,8 @@ def test_odds_api_extracts_total_goals_from_balanced_totals(tmp_path, monkeypatc
 
     assert result["expected_total_goals"] == pytest.approx(2.75)
     assert result["total_goals_market"]["bookmaker_count"] == 2
+    assert result["expected_goal_difference"] == pytest.approx(2.75)
+    assert result["spread_market"]["bookmaker_count"] == 2
 
 
 def test_football_data_fetches_match_odds_with_env_key(tmp_path, monkeypatch):

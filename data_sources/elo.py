@@ -11,7 +11,6 @@ import requests
 
 from .cache import CACHE_TTL, load_from_cache, save_to_cache
 
-
 ELO_RATINGS_BASE_URL = "https://www.international-football.net/elo-ratings-table"
 
 

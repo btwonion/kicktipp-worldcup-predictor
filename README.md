@@ -10,6 +10,7 @@ Das Tool ist auf WM-Spiele und andere Fussballspiele anwendbar. Standardmäßig 
 - lädt Elo-Ratings aus einer lokalen CSV-Datei, per Remote-Quelle oder akzeptiert manuelle Elo-Werte
 - akzeptiert manuelle Werte als Override, wenn eine Quelle fehlt oder bewusst überschrieben werden soll
 - leitet daraus erwartete Tore für Team A und Team B ab
+- nutzt automatisch Handicap-/Spread-Quoten, wenn The Odds API sie liefert, um klare Favoriten besser abzubilden
 - erzeugt eine normalisierte Score-Matrix, standardmässig bis 6:6
 - berechnet für jeden Tipp bis 5:5 den erwarteten Kicktipp-Punktwert
 - gibt den besten Tipp und die Top 5 aus
@@ -108,7 +109,11 @@ Die automatische 1X2-Suche probiert standardmäßig:
 
 Wenn eine Quelle nicht konfiguriert ist, keine Daten für die Partie findet oder weitere Angaben wie `--match-date` fehlen, wird die nächste Quelle probiert.
 
-The Odds API wird mit `h2h,totals` abgefragt. `h2h` liefert die 1X2-Wahrscheinlichkeiten, `totals` liefert Over/Under-Linien für die automatische Gesamttor-Schätzung. Falls keine `totals` im Response enthalten sind, setze `--total-goals`.
+The Odds API wird mit `h2h,spreads,totals` abgefragt. `h2h` liefert die 1X2-Wahrscheinlichkeiten, `totals` liefert Over/Under-Linien für die automatische Gesamttor-Schätzung. Falls keine `totals` im Response enthalten sind, setze `--total-goals`.
+
+The Odds API wird außerdem mit `spreads` abgefragt. Wenn ein Handicap-/Spread-Markt für die Partie verfügbar ist, nutzt das Tool die ausgewogenste Spread-Linie der Bookmaker als erwartete Tordifferenz. Zusammen mit der Total-Goals-Linie ergibt das direkt die erwarteten Tore beider Teams. Dadurch können klare Favoriten bei passender Marktlage automatisch von konservativen Tipps wie `2:0` in Richtung `3:0` oder `4:0` rücken.
+
+Wenn keine Spread-Daten verfügbar sind, bleibt die bisherige konservative 1X2-basierte Herleitung aktiv. Das ist bewusst so: 1X2-Quoten und Gesamttore allein sagen nicht zuverlässig, wie stark ein Favorit gewinnt.
 
 ## Manuelle Overrides
 

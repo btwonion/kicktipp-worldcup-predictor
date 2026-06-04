@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from typing import TypedDict
 
 Score = tuple[int, int]
+
+
+class RankedTip(TypedDict):
+    score: Score
+    expected_points: float
+    exact_probability: float
+    tendency_probability: float
 
 
 def _outcome(score: Score) -> int:
@@ -42,7 +50,9 @@ def expected_kicktipp_points(
     )
 
 
-def tendency_probability(predicted_score: Score, score_matrix: dict[Score, float]) -> float:
+def tendency_probability(
+    predicted_score: Score, score_matrix: dict[Score, float]
+) -> float:
     predicted_outcome = _outcome(predicted_score)
     return sum(
         probability
@@ -53,17 +63,21 @@ def tendency_probability(predicted_score: Score, score_matrix: dict[Score, float
 
 def rank_tips(
     score_matrix: dict[Score, float], tip_max_goals: int = 5
-) -> list[dict[str, object]]:
-    tips: list[dict[str, object]] = []
+) -> list[RankedTip]:
+    tips: list[RankedTip] = []
     for goals_a in range(tip_max_goals + 1):
         for goals_b in range(tip_max_goals + 1):
             predicted = (goals_a, goals_b)
             tips.append(
                 {
                     "score": predicted,
-                    "expected_points": expected_kicktipp_points(predicted, score_matrix),
+                    "expected_points": expected_kicktipp_points(
+                        predicted, score_matrix
+                    ),
                     "exact_probability": score_matrix.get(predicted, 0.0),
-                    "tendency_probability": tendency_probability(predicted, score_matrix),
+                    "tendency_probability": tendency_probability(
+                        predicted, score_matrix
+                    ),
                 }
             )
 

@@ -4,7 +4,6 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-
 Score = tuple[int, int]
 
 
@@ -16,6 +15,8 @@ class ProbabilityResult:
     source: str
     expected_total_goals: float | None = None
     total_goals_source: str | None = None
+    expected_goal_difference: float | None = None
+    goal_difference_source: str | None = None
     raw: dict[str, Any] | None = None
 
     @property
@@ -101,6 +102,22 @@ def infer_expected_goals(
     # Avoid unrealistic zero-attack estimates while keeping the requested total.
     share_a = min(max(share_a, 0.18), 0.82)
     lambda_a = total_goals * share_a
+    lambda_b = total_goals - lambda_a
+    return lambda_a, lambda_b
+
+
+def infer_expected_goals_from_market_difference(
+    total_goals: float,
+    expected_goal_difference: float,
+) -> tuple[float, float]:
+    if total_goals <= 0:
+        raise ValueError("total_goals muss > 0 sein.")
+    if abs(expected_goal_difference) >= total_goals:
+        raise ValueError(
+            "expected_goal_difference muss kleiner als total_goals sein."
+        )
+
+    lambda_a = (total_goals + expected_goal_difference) / 2
     lambda_b = total_goals - lambda_a
     return lambda_a, lambda_b
 

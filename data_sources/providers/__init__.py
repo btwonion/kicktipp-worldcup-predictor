@@ -9,7 +9,6 @@ from .the_odds_api import (
     normalize_bookmaker_odds_to_probabilities,
 )
 
-
 DEFAULT_PROVIDERS: tuple[ProbabilityProvider, ...] = (
     TheOddsApiProvider(),
     FootballDataProvider(),

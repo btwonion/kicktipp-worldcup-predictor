@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-
 
 CACHE_DIR = Path("cache")
 CACHE_TTL = timedelta(days=1)
@@ -40,8 +39,8 @@ def load_from_cache(
     if not path.exists():
         return None
     if max_age is not None:
-        modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        if datetime.now(timezone.utc) - modified_at > max_age:
+        modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        if datetime.now(UTC) - modified_at > max_age:
             return None
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)

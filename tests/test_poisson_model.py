@@ -1,6 +1,11 @@
 import pytest
 
-from models import build_score_matrix, infer_expected_goals, poisson_pmf
+from models import (
+    build_score_matrix,
+    infer_expected_goals,
+    infer_expected_goals_from_market_difference,
+    poisson_pmf,
+)
 
 
 def test_poisson_probabilities_are_positive():
@@ -32,3 +37,12 @@ def test_infer_expected_goals_preserves_total_and_favors_stronger_side():
 
     assert lambda_a + lambda_b == pytest.approx(2.6)
     assert lambda_a > lambda_b
+
+
+def test_market_goal_difference_directly_shapes_expected_goals():
+    lambda_a, lambda_b = infer_expected_goals_from_market_difference(3.5, 2.5)
+
+    assert lambda_a + lambda_b == pytest.approx(3.5)
+    assert lambda_a - lambda_b == pytest.approx(2.5)
+    assert lambda_a == pytest.approx(3.0)
+    assert lambda_b == pytest.approx(0.5)

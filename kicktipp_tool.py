@@ -27,9 +27,9 @@ from models import (
     apply_low_score_adjustment,
     build_score_matrix,
     infer_expected_goals,
+    infer_expected_goals_from_market_difference,
 )
-from scoring import rank_tips
-
+from scoring import RankedTip, rank_tips
 
 SECRET_URL_PARAM_RE = re.compile(r"([?&](?:apiKey|key)=)[^&\s)]+")
 
@@ -248,6 +248,15 @@ def _fetch_probabilities_from_source(
                 f"The Odds API totals ({float(total_goals):.2f}; "
                 f"{bookmaker_count} Bookmaker)"
             )
+        expected_goal_difference = odds_data.get("expected_goal_difference")
+        goal_difference_source = None
+        if expected_goal_difference is not None:
+            spread_market = odds_data.get("spread_market") or {}
+            bookmaker_count = spread_market.get("bookmaker_count", 0)
+            goal_difference_source = (
+                f"The Odds API spreads ({float(expected_goal_difference):+.2f}; "
+                f"{bookmaker_count} Bookmaker)"
+            )
         return ProbabilityResult(
             p_a=probabilities["p_a"],
             p_draw=probabilities["p_draw"],
@@ -257,6 +266,12 @@ def _fetch_probabilities_from_source(
                 float(total_goals) if total_goals is not None else None
             ),
             total_goals_source=total_source,
+            expected_goal_difference=(
+                float(expected_goal_difference)
+                if expected_goal_difference is not None
+                else None
+            ),
+            goal_difference_source=goal_difference_source,
             raw=odds_data,
         )
 
@@ -435,7 +450,7 @@ def _resolve_elo(args: argparse.Namespace) -> EloResult:
     return EloResult(None, None, "neutral / nicht verfügbar")
 
 
-def _tip_payload(tip: dict[str, Any], team_a: str, team_b: str) -> dict[str, Any]:
+def _tip_payload(tip: RankedTip, team_a: str, team_b: str) -> dict[str, Any]:
     return {
         "score": _format_score(tip["score"]),
         "score_tuple": list(tip["score"]),
@@ -450,8 +465,8 @@ def _prediction_payload(
     prediction_input: PredictionInput,
     lambda_a: float,
     lambda_b: float,
-    best: dict[str, Any],
-    top_tips: list[dict[str, Any]],
+    best: RankedTip,
+    top_tips: list[RankedTip],
 ) -> dict[str, Any]:
     return {
         "match": {
@@ -469,12 +484,18 @@ def _prediction_payload(
             "p_draw": prediction_input.probabilities.p_draw,
             "p_b": prediction_input.probabilities.p_b,
             "total_goals": prediction_input.total_goals,
+            "expected_goal_difference": (
+                prediction_input.probabilities.expected_goal_difference
+            ),
             "elo_a": prediction_input.elo.elo_a,
             "elo_b": prediction_input.elo.elo_b,
         },
         "model": {
             "lambda_a": lambda_a,
             "lambda_b": lambda_b,
+            "goal_difference_source": (
+                prediction_input.probabilities.goal_difference_source
+            ),
         },
         "recommendation": _tip_payload(
             best, prediction_input.team_a, prediction_input.team_b
@@ -498,14 +519,20 @@ def run_predict(args: argparse.Namespace) -> int:
         elo=elo,
     )
 
-    lambda_a, lambda_b = infer_expected_goals(
-        probabilities.p_a,
-        probabilities.p_draw,
-        probabilities.p_b,
-        total_goals,
-        elo.elo_a,
-        elo.elo_b,
-    )
+    if probabilities.expected_goal_difference is None:
+        lambda_a, lambda_b = infer_expected_goals(
+            probabilities.p_a,
+            probabilities.p_draw,
+            probabilities.p_b,
+            total_goals,
+            elo.elo_a,
+            elo.elo_b,
+        )
+    else:
+        lambda_a, lambda_b = infer_expected_goals_from_market_difference(
+            total_goals,
+            probabilities.expected_goal_difference,
+        )
     matrix = build_score_matrix(lambda_a, lambda_b, args.max_goals)
     matrix = apply_low_score_adjustment(matrix, rho=args.rho)
     tips = rank_tips(matrix, tip_max_goals=args.tip_max_goals)
@@ -532,6 +559,8 @@ def run_predict(args: argparse.Namespace) -> int:
     print("Datenquellen:")
     print(f"* 1X2-Wahrscheinlichkeiten: {probabilities.source}")
     print(f"* Erwartete Tore: {goals_source}")
+    if probabilities.goal_difference_source is not None:
+        print(f"* Handicap/Spread: {probabilities.goal_difference_source}")
     print(f"* Elo: {elo.source}")
     print()
     print(f"Empfohlener Tipp: {_format_score(best['score'])}")

@@ -30,7 +30,6 @@ from .team_matching import (
     team_names_match,
 )
 
-
 CACHE_DIR = _cache.CACHE_DIR
 CACHE_TTL = _cache.CACHE_TTL
 DataSourceUnavailable = _elo.DataSourceUnavailable
@@ -130,7 +129,9 @@ def fetch_odds_from_the_odds_api(
     _sync_compat_globals()
     resolved_cache_ttl = cache_ttl if cache_ttl is not None else CACHE_TTL
     resolved_cache_dir = cache_dir if cache_dir is not None else CACHE_DIR
-    cache_key = f"the_odds_api:{sport_key}:{regions}:h2h_totals:{team_a}:{team_b}"
+    cache_key = (
+        f"the_odds_api:{sport_key}:{regions}:h2h_spreads_totals:{team_a}:{team_b}"
+    )
     if not refresh:
         cached = _cache.load_from_cache(
             cache_key,

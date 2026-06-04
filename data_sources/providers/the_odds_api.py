@@ -38,12 +38,17 @@ def normalize_bookmaker_odds_to_probabilities(
             or odds.get("2"),
         }
 
-    if any(value is None for value in raw.values()):
+    if raw["home"] is None or raw["draw"] is None or raw["away"] is None:
         raise ValueError("Odds müssen home/draw/away enthalten.")
-    if any(float(value) <= 1 for value in raw.values()):
+    prices = {
+        "home": float(raw["home"]),
+        "draw": float(raw["draw"]),
+        "away": float(raw["away"]),
+    }
+    if any(value <= 1 for value in prices.values()):
         raise ValueError("Dezimalquoten müssen > 1 sein.")
 
-    implied = {key: 1 / float(value) for key, value in raw.items()}
+    implied = {key: 1 / value for key, value in prices.items()}
     overround = sum(implied.values())
     if overround <= 0:
         raise ValueError("Ungültige Quoten.")
@@ -143,6 +148,88 @@ def _extract_total_goals_market(event: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _extract_balanced_spread_line(
+    bookmaker: dict[str, Any], team_a: str, team_b: str
+) -> dict[str, float] | None:
+    best_line: dict[str, float] | None = None
+    best_balance: float | None = None
+
+    for market in bookmaker.get("markets", []):
+        if market.get("key") != "spreads":
+            continue
+
+        team_a_outcomes: list[dict[str, float]] = []
+        team_b_outcomes: list[dict[str, float]] = []
+        for outcome in market.get("outcomes", []):
+            name = outcome.get("name")
+            point = outcome.get("point")
+            price = outcome.get("price")
+            if name is None or point is None or price is None:
+                continue
+            if float(price) <= 1:
+                continue
+
+            item = {"point": float(point), "price": float(price)}
+            if team_names_match(team_a, [str(name)]):
+                team_a_outcomes.append(item)
+            elif team_names_match(team_b, [str(name)]):
+                team_b_outcomes.append(item)
+
+        for team_a_outcome in team_a_outcomes:
+            for team_b_outcome in team_b_outcomes:
+                if team_a_outcome["point"] != -team_b_outcome["point"]:
+                    continue
+
+                implied_team_a = 1 / team_a_outcome["price"]
+                implied_team_b = 1 / team_b_outcome["price"]
+                overround = implied_team_a + implied_team_b
+                if overround <= 0:
+                    continue
+
+                p_team_a_covers = implied_team_a / overround
+                balance = abs(p_team_a_covers - 0.5)
+                if best_balance is None or balance < best_balance:
+                    best_balance = balance
+                    best_line = {
+                        "expected_goal_difference": -team_a_outcome["point"],
+                        "team_a_point": team_a_outcome["point"],
+                        "team_b_point": team_b_outcome["point"],
+                        "team_a_price": team_a_outcome["price"],
+                        "team_b_price": team_b_outcome["price"],
+                        "p_team_a_covers": p_team_a_covers,
+                    }
+
+    return best_line
+
+
+def _extract_spread_market(
+    event: dict[str, Any], team_a: str, team_b: str
+) -> dict[str, Any] | None:
+    lines: list[dict[str, Any]] = []
+    for bookmaker in event.get("bookmakers", []):
+        line = _extract_balanced_spread_line(bookmaker, team_a, team_b)
+        if line is None:
+            continue
+        lines.append(
+            {
+                "bookmaker": bookmaker.get("key") or bookmaker.get("title"),
+                **line,
+            }
+        )
+
+    if not lines:
+        return None
+
+    expected_goal_difference = sum(
+        line["expected_goal_difference"] for line in lines
+    ) / len(lines)
+    return {
+        "expected_goal_difference": expected_goal_difference,
+        "bookmaker_count": len(lines),
+        "lines": lines,
+    }
+
+
 def _event_matches(event: dict[str, Any], team_a: str, team_b: str) -> bool:
     teams = [
         str(team)
@@ -163,7 +250,9 @@ def fetch_odds_from_the_odds_api(
     cache_dir: str | Path | None = None,
     no_cache: bool = False,
 ) -> dict[str, Any]:
-    cache_key = f"the_odds_api:{sport_key}:{regions}:h2h_totals:{team_a}:{team_b}"
+    cache_key = (
+        f"the_odds_api:{sport_key}:{regions}:h2h_spreads_totals:{team_a}:{team_b}"
+    )
 
     if not refresh:
         cached = load_from_cache(
@@ -186,7 +275,7 @@ def fetch_odds_from_the_odds_api(
         params={
             "apiKey": resolved_key,
             "regions": regions,
-            "markets": "h2h,totals",
+            "markets": "h2h,spreads,totals",
             "oddsFormat": "decimal",
         },
         timeout=20,
@@ -211,6 +300,12 @@ def fetch_odds_from_the_odds_api(
         if total_goals_market is not None:
             data["expected_total_goals"] = total_goals_market["total_goals"]
             data["total_goals_market"] = total_goals_market
+        spread_market = _extract_spread_market(event, team_a, team_b)
+        if spread_market is not None:
+            data["expected_goal_difference"] = spread_market[
+                "expected_goal_difference"
+            ]
+            data["spread_market"] = spread_market
         save_to_cache(cache_key, data, cache_dir=cache_dir, no_cache=no_cache)
         return data
 
@@ -245,6 +340,15 @@ class TheOddsApiProvider:
                 f"The Odds API totals ({float(total_goals):.2f}; "
                 f"{bookmaker_count} Bookmaker)"
             )
+        expected_goal_difference = data.get("expected_goal_difference")
+        goal_difference_source = None
+        if expected_goal_difference is not None:
+            spread_market = data.get("spread_market") or {}
+            bookmaker_count = spread_market.get("bookmaker_count", 0)
+            goal_difference_source = (
+                f"The Odds API spreads ({float(expected_goal_difference):+.2f}; "
+                f"{bookmaker_count} Bookmaker)"
+            )
         return ProbabilityResult(
             p_a=probabilities["p_a"],
             p_draw=probabilities["p_draw"],
@@ -254,5 +358,11 @@ class TheOddsApiProvider:
                 float(total_goals) if total_goals is not None else None
             ),
             total_goals_source=total_source,
+            expected_goal_difference=(
+                float(expected_goal_difference)
+                if expected_goal_difference is not None
+                else None
+            ),
+            goal_difference_source=goal_difference_source,
             raw=data,
         )
