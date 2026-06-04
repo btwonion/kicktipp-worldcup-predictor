@@ -99,7 +99,7 @@ def test_missing_the_odds_api_key_is_handled_cleanly(tmp_path, monkeypatch):
         lambda: Settings(the_odds_api_key=None),
     )
 
-    with pytest.raises(ValueError, match="THE_ODDS_API_KEY fehlt"):
+    with pytest.raises(ValueError, match="THE_ODDS_API_KEY is missing"):
         fetch_odds_from_the_odds_api("Argentina", "France", api_key=None)
 
 
@@ -111,7 +111,7 @@ def test_missing_football_data_key_is_handled_cleanly(tmp_path, monkeypatch):
         lambda: Settings(football_data_api_key=None),
     )
 
-    with pytest.raises(ValueError, match="FOOTBALL_DATA_API_KEY fehlt"):
+    with pytest.raises(ValueError, match="FOOTBALL_DATA_API_KEY is missing"):
         fetch_odds_from_football_data("Argentina", "France", api_key=None)
 
 
@@ -123,7 +123,7 @@ def test_missing_api_football_key_is_handled_cleanly(tmp_path, monkeypatch):
         lambda: Settings(api_football_key=None),
     )
 
-    with pytest.raises(ValueError, match="API_FOOTBALL_KEY fehlt"):
+    with pytest.raises(ValueError, match="API_FOOTBALL_KEY is missing"):
         fetch_predictions_from_api_football(
             "Argentina", "France", fixture_id=123, api_key=None
         )
@@ -168,7 +168,7 @@ def test_odds_api_ignores_cache_older_than_one_day(tmp_path, monkeypatch):
     old_timestamp = time.time() - 25 * 60 * 60
     os.utime(data_sources._cache_path(cache_key), (old_timestamp, old_timestamp))
 
-    with pytest.raises(ValueError, match="THE_ODDS_API_KEY fehlt"):
+    with pytest.raises(ValueError, match="THE_ODDS_API_KEY is missing"):
         fetch_odds_from_the_odds_api("Argentina", "France")
 
 
@@ -190,7 +190,7 @@ def test_no_cache_ignores_cached_api_payload(tmp_path, monkeypatch):
         },
     )
 
-    with pytest.raises(ValueError, match="THE_ODDS_API_KEY fehlt"):
+    with pytest.raises(ValueError, match="THE_ODDS_API_KEY is missing"):
         fetch_odds_from_the_odds_api("Argentina", "France", no_cache=True)
 
 

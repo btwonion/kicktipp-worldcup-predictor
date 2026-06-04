@@ -61,7 +61,6 @@ def load_settings(env_path: str | Path = ENV_PATH) -> Settings:
 def require_api_key(name: str, value: str | None) -> str:
     if not value:
         raise ValueError(
-            f"{name} fehlt. Trage den Key in .env ein oder nutze "
-            "manuelle CLI-Parameter."
+            f"{name} is missing. Add the key to .env or use manual CLI parameters."
         )
     return value

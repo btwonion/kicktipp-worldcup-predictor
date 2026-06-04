@@ -38,7 +38,7 @@ def load_fixtures_from_openfootball(path_or_url: str) -> list[dict[str, Any]]:
     elif isinstance(payload, list):
         rounds = [{"name": None, "matches": payload}]
     else:
-        raise ValueError("Nicht unterstütztes Fixture-JSON-Format.")
+        raise ValueError("Unsupported fixture JSON format.")
 
     for round_item in rounds:
         for match in round_item.get("matches", []):

@@ -22,7 +22,7 @@ def _probabilities_from_percentages(
 ) -> dict[str, float]:
     def parse(value: Any) -> float:
         if value is None:
-            raise ValueError("Prozentwert fehlt.")
+            raise ValueError("Percentage value is missing.")
         if isinstance(value, str):
             value = value.strip().removesuffix("%")
         parsed = float(value)
@@ -36,7 +36,7 @@ def _probabilities_from_percentages(
     total = parsed_home + parsed_draw + parsed_away
     if total <= 0:
         raise ValueError(
-            "API-Football-Prognose hat keine positive Gesamtwahrscheinlichkeit."
+            "API-Football prediction has no positive total probability."
         )
 
     if reverse:
@@ -92,7 +92,7 @@ def _find_api_football_fixture(
             return int(fixture_id), reverse, fixture
 
     raise DataSourceUnavailable(
-        f"Kein API-Football-Fixture für {team_a} vs {team_b} am {match_date} gefunden."
+        f"No API-Football fixture found for {team_a} vs {team_b} on {match_date}."
     )
 
 
@@ -109,7 +109,7 @@ def fetch_predictions_from_api_football(
 ) -> dict[str, Any]:
     if fixture_id is None and not match_date:
         raise ValueError(
-            "API-Football benötigt --api-football-fixture-id oder --match-date."
+            "API-Football requires --api-football-fixture-id or --match-date."
         )
 
     cache_key = f"api_football:{fixture_id or match_date}:{team_a}:{team_b}"
@@ -147,7 +147,7 @@ def fetch_predictions_from_api_football(
     predictions = _api_football_response_items(response.json())
     if not predictions:
         raise DataSourceUnavailable(
-            f"Keine API-Football-Prognose für Fixture {resolved_fixture_id} gefunden."
+            f"No API-Football prediction found for fixture {resolved_fixture_id}."
         )
 
     prediction = predictions[0]

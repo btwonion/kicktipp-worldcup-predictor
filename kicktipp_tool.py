@@ -45,14 +45,14 @@ def _probability(value: float) -> str:
 def _tendency_label(score: tuple[int, int], team_a: str, team_b: str) -> str:
     goals_a, goals_b = score
     if goals_a > goals_b:
-        return f"Sieg {team_a}"
+        return f"{team_a} win"
     if goals_a < goals_b:
-        return f"Sieg {team_b}"
-    return "Unentschieden"
+        return f"{team_b} win"
+    return "draw"
 
 
 def _add_predict_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser("predict", help="Erzeuge einen Kicktipp-Tipp.")
+    parser = subparsers.add_parser("predict", help="Generate a Kicktipp tip.")
     parser.add_argument("--team-a", required=True)
     parser.add_argument("--team-b", required=True)
     parser.add_argument("--p-a", type=float)
@@ -65,47 +65,47 @@ def _add_predict_parser(subparsers: argparse._SubParsersAction) -> None:
         "--use-elo",
         action="store_true",
         default=True,
-        help="Elo-Ratings laden. Standardmäßig aktiv.",
+        help="Load Elo ratings. Enabled by default.",
     )
     parser.add_argument(
         "--no-elo",
         action="store_false",
         dest="use_elo",
-        help="Elo-Ratings nicht automatisch laden.",
+        help="Do not load Elo ratings automatically.",
     )
     parser.add_argument("--elo-path", default="data/elo_ratings.csv")
     parser.add_argument(
         "--elo-url",
         help=(
-            "Remote-Quelle für Elo-Ratings. Standard: international-football.net "
-            "für das aktuelle Datum."
+            "Remote source for Elo ratings. Default: international-football.net "
+            "for the current date."
         ),
     )
     parser.add_argument(
         "--use-odds-api",
         action="store_true",
-        help="Automatische 1X2-Suche auf The Odds API beschränken.",
+        help="Restrict automatic 1X2 lookup to The Odds API.",
     )
     parser.add_argument(
         "--use-football-data",
         action="store_true",
-        help="Automatische 1X2-Suche auf football-data.org beschränken.",
+        help="Restrict automatic 1X2 lookup to football-data.org.",
     )
     parser.add_argument(
         "--use-api-football",
         action="store_true",
-        help="Automatische 1X2-Suche auf API-Football-Prognosen beschränken.",
+        help="Restrict automatic 1X2 lookup to API-Football predictions.",
     )
     parser.add_argument(
         "--match-date",
-        help="Spieldatum im Format YYYY-MM-DD für football-data.org/API-Football.",
+        help="Match date in YYYY-MM-DD format for football-data.org/API-Football.",
     )
     parser.add_argument("--football-data-match-id", type=int)
     parser.add_argument("--api-football-fixture-id", type=int)
     parser.add_argument(
         "--odds-sport-key",
         default="soccer_fifa_world_cup",
-        help="The Odds API sport key, z. B. soccer_fifa_world_cup oder soccer_epl.",
+        help="The Odds API sport key, e.g. soccer_fifa_world_cup or soccer_epl.",
     )
     parser.add_argument("--odds-regions", default="eu")
     parser.add_argument("--refresh", action="store_true")
@@ -113,19 +113,19 @@ def _add_predict_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Cache weder lesen noch schreiben.",
+        help="Do not read from or write to the cache.",
     )
     parser.add_argument(
         "--cache-ttl",
         type=float,
         default=None,
-        help="Cache-TTL in Stunden. Standard: 24.",
+        help="Cache TTL in hours. Default: 24.",
     )
     parser.add_argument("--json", action="store_true", dest="output_json")
     parser.add_argument(
         "--quiet",
         action="store_true",
-        help="Nur den empfohlenen Tipp ausgeben.",
+        help="Only print the recommended tip.",
     )
     parser.add_argument("--max-goals", type=int, default=6)
     parser.add_argument("--tip-max-goals", type=int, default=5)
@@ -135,7 +135,7 @@ def _add_predict_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Lokales Kicktipp-Tool mit Poisson-Modell und EV-Ranking."
+        description="Local Kicktipp tool with Poisson model and EV ranking."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_predict_parser(subparsers)
@@ -185,7 +185,7 @@ def _cache_ttl(args: argparse.Namespace) -> timedelta | None:
     if value is None:
         return None
     if value < 0:
-        raise SystemExit("--cache-ttl muss >= 0 sein.")
+        raise SystemExit("--cache-ttl must be >= 0.")
     return timedelta(hours=value)
 
 
@@ -246,7 +246,7 @@ def _fetch_probabilities_from_source(
             bookmaker_count = total_market.get("bookmaker_count", 0)
             total_source = (
                 f"The Odds API totals ({float(total_goals):.2f}; "
-                f"{bookmaker_count} Bookmaker)"
+                f"{bookmaker_count} bookmakers)"
             )
         expected_goal_difference = odds_data.get("expected_goal_difference")
         goal_difference_source = None
@@ -255,7 +255,7 @@ def _fetch_probabilities_from_source(
             bookmaker_count = spread_market.get("bookmaker_count", 0)
             goal_difference_source = (
                 f"The Odds API spreads ({float(expected_goal_difference):+.2f}; "
-                f"{bookmaker_count} Bookmaker)"
+                f"{bookmaker_count} bookmakers)"
             )
         return ProbabilityResult(
             p_a=probabilities["p_a"],
@@ -315,7 +315,7 @@ def _fetch_probabilities_from_source(
             raw=prediction_data,
         )
 
-    raise ValueError(f"Unbekannte Datenquelle: {source}")
+    raise ValueError(f"Unknown data source: {source}")
 
 
 def _resolve_probabilities(args: argparse.Namespace) -> ProbabilityResult:
@@ -325,12 +325,12 @@ def _resolve_probabilities(args: argparse.Namespace) -> ProbabilityResult:
             p_a=args.p_a,
             p_draw=args.p_draw,
             p_b=args.p_b,
-            source="manuelle CLI-Eingabe",
+            source="manual CLI input",
         )
     if any(value is not None for value in manual_values):
         raise SystemExit(
-            "Unvollständige 1X2-Wahrscheinlichkeiten. Setze --p-a, --p-draw und --p-b "
-            "oder lasse alle drei Werte weg."
+            "Incomplete 1X2 probabilities. Set --p-a, --p-draw, and --p-b "
+            "or omit all three values."
         )
 
     selected_sources = _selected_probability_sources(args)
@@ -346,13 +346,13 @@ def _resolve_probabilities(args: argparse.Namespace) -> ProbabilityResult:
         except (ValueError, DataSourceUnavailable, requests.RequestException) as error:
             message = _safe_error_message(error)
             if explicit_source_selection and len(selected_sources) == 1:
-                raise SystemExit(f"Quoten fehlen: {message}") from error
+                raise SystemExit(f"Odds are missing: {message}") from error
             errors.append(f"{_source_label(source)}: {message}")
 
     details = "\n".join(f"* {error}" for error in errors)
     raise SystemExit(
-        "1X2-Wahrscheinlichkeiten konnten nicht automatisch geladen werden. "
-        "Setze API-Keys in .env, ergänze Match-IDs/Datum falls nötig oder nutze "
+        "1X2 probabilities could not be loaded automatically. "
+        "Set API keys in .env, add match IDs/date if needed, or use "
         "--p-a --p-draw --p-b.\n"
         + details
     )
@@ -366,22 +366,22 @@ def _resolve_total_goals(
         if probabilities is not None and probabilities.expected_total_goals is not None:
             return (
                 probabilities.expected_total_goals,
-                probabilities.total_goals_source or "automatisch abgerufen",
+                probabilities.total_goals_source or "automatic lookup",
             )
         raise SystemExit(
-            "Erwartete Gesamttore fehlen. Setze --total-goals oder nutze eine Quelle, "
-            "die Total-Goals/Over-Under-Quoten liefert (z. B. The Odds API mit totals)."
+            "Expected total goals are missing. Set --total-goals or use a source "
+            "that provides total-goals/over-under odds (e.g. The Odds API with totals)."
         )
-    return args.total_goals, "manuelle CLI-Eingabe"
+    return args.total_goals, "manual CLI input"
 
 
 def _resolve_elo(args: argparse.Namespace) -> EloResult:
     if args.elo_a is not None or args.elo_b is not None:
         if args.elo_a is None or args.elo_b is None:
             raise SystemExit(
-                "Für manuelles Elo müssen --elo-a und --elo-b gesetzt sein."
+                "Manual Elo requires both --elo-a and --elo-b."
             )
-        return EloResult(args.elo_a, args.elo_b, "manuelle CLI-Eingabe")
+        return EloResult(args.elo_a, args.elo_b, "manual CLI input")
 
     if args.use_elo:
         ratings = load_elo_ratings(
@@ -416,18 +416,18 @@ def _resolve_elo(args: argparse.Namespace) -> EloResult:
         except (DataSourceUnavailable, ValueError, requests.RequestException) as error:
             if ratings:
                 print(
-                    f"Elo nicht vollständig gefunden in {args.elo_path}; "
-                    f"Remote-Elo fehlgeschlagen: {_safe_error_message(error)}. "
-                    "Nutze neutrales Elo.",
+                    f"Elo was not fully found in {args.elo_path}; "
+                    f"remote Elo failed: {_safe_error_message(error)}. "
+                    "Using neutral Elo.",
                     file=sys.stderr,
                 )
             else:
                 print(
-                    f"Remote-Elo fehlgeschlagen: {_safe_error_message(error)}. "
-                    "Nutze neutrales Elo.",
+                    f"Remote Elo failed: {_safe_error_message(error)}. "
+                    "Using neutral Elo.",
                     file=sys.stderr,
                 )
-            return EloResult(None, None, "neutral / nicht verfügbar")
+            return EloResult(None, None, "neutral / unavailable")
 
         elo_a = _rating_for_team(remote_ratings, args.team_a)
         elo_b = _rating_for_team(remote_ratings, args.team_b)
@@ -436,18 +436,18 @@ def _resolve_elo(args: argparse.Namespace) -> EloResult:
 
         if ratings:
             print(
-                f"Elo nicht vollständig gefunden in {args.elo_path} oder "
-                "Remote-Quelle; "
-                "nutze neutrales Elo.",
+                f"Elo was not fully found in {args.elo_path} or the "
+                "remote source; "
+                "using neutral Elo.",
                 file=sys.stderr,
             )
         elif remote_ratings:
             print(
-                "Elo nicht vollständig in Remote-Quelle gefunden; nutze neutrales Elo.",
+                "Elo was not fully found in the remote source; using neutral Elo.",
                 file=sys.stderr,
             )
 
-    return EloResult(None, None, "neutral / nicht verfügbar")
+    return EloResult(None, None, "neutral / unavailable")
 
 
 def _tip_payload(tip: RankedTip, team_a: str, team_b: str) -> dict[str, Any]:
@@ -476,7 +476,7 @@ def _prediction_payload(
         "data_sources": {
             "probabilities": prediction_input.probabilities.source,
             "total_goals": prediction_input.probabilities.total_goals_source
-            or "manuelle CLI-Eingabe",
+            or "manual CLI input",
             "elo": prediction_input.elo.source,
         },
         "inputs": {
@@ -555,41 +555,41 @@ def run_predict(args: argparse.Namespace) -> int:
         print(_format_score(best["score"]))
         return 0
 
-    print(f"Spiel: {args.team_a} vs {args.team_b}")
-    print("Datenquellen:")
-    print(f"* 1X2-Wahrscheinlichkeiten: {probabilities.source}")
-    print(f"* Erwartete Tore: {goals_source}")
+    print(f"Match: {args.team_a} vs {args.team_b}")
+    print("Data sources:")
+    print(f"* 1X2 probabilities: {probabilities.source}")
+    print(f"* Expected goals: {goals_source}")
     if probabilities.goal_difference_source is not None:
-        print(f"* Handicap/Spread: {probabilities.goal_difference_source}")
+        print(f"* Handicap/spread: {probabilities.goal_difference_source}")
     print(f"* Elo: {elo.source}")
     print()
-    print(f"Empfohlener Tipp: {_format_score(best['score'])}")
-    print(f"Erwartete Punkte: {best['expected_points']:.2f}")
+    print(f"Recommended tip: {_format_score(best['score'])}")
+    print(f"Expected points: {best['expected_points']:.2f}")
     print(
-        f"Wahrscheinlichkeit für genau {_format_score(best['score'])}: "
+        f"Probability of exactly {_format_score(best['score'])}: "
         f"{_probability(best['exact_probability'])}"
     )
     print(
-        f"Tendenz {_tendency_label(best['score'], args.team_a, args.team_b)}: "
+        f"Outcome {_tendency_label(best['score'], args.team_a, args.team_b)}: "
         f"{_probability(best['tendency_probability'])}"
     )
     print()
-    print("Top 5 Tipps:")
+    print("Top 5 tips:")
     if not show_tendency_per_tip:
         first_tip = top_tips[0]
         print(
-            f"Tendenz der Top 5: "
+            f"Top 5 outcome: "
             f"{_tendency_label(first_tip['score'], args.team_a, args.team_b)} "
             f"({_probability(first_tip['tendency_probability'])})"
         )
     for index, tip in enumerate(top_tips, start=1):
         line = (
             f"{index}. {_format_score(tip['score'])} - EV {tip['expected_points']:.2f} "
-            f"- genau dieses Ergebnis {_probability(tip['exact_probability'])}"
+            f"- exact score {_probability(tip['exact_probability'])}"
         )
         if show_tendency_per_tip:
             line += (
-                f" - Tendenz {_tendency_label(tip['score'], args.team_a, args.team_b)} "
+                f" - outcome {_tendency_label(tip['score'], args.team_a, args.team_b)} "
                 f"({_probability(tip['tendency_probability'])})"
             )
         print(line)

@@ -107,7 +107,7 @@ def fetch_odds_from_football_data(
         return data
 
     raise DataSourceUnavailable(
-        f"Keine football-data.org-1X2-Quoten für {team_a} vs {team_b} gefunden."
+        f"No football-data.org 1X2 odds found for {team_a} vs {team_b}."
     )
 
 

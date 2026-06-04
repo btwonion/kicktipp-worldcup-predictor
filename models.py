@@ -42,16 +42,16 @@ class PredictionInput:
 
 def poisson_pmf(k: int, lambda_: float) -> float:
     if k < 0:
-        raise ValueError("k muss >= 0 sein.")
+        raise ValueError("k must be >= 0.")
     if lambda_ <= 0:
-        raise ValueError("lambda_ muss > 0 sein.")
+        raise ValueError("lambda_ must be > 0.")
     return math.exp(-lambda_) * (lambda_**k) / math.factorial(k)
 
 
 def _normalize(score_matrix: dict[Score, float]) -> dict[Score, float]:
     total = sum(score_matrix.values())
     if total <= 0:
-        raise ValueError("Score-Matrix hat keine positive Gesamtwahrscheinlichkeit.")
+        raise ValueError("Score matrix has no positive total probability.")
     return {score: probability / total for score, probability in score_matrix.items()}
 
 
@@ -59,9 +59,9 @@ def build_score_matrix(
     lambda_a: float, lambda_b: float, max_goals: int
 ) -> dict[Score, float]:
     if lambda_a <= 0 or lambda_b <= 0:
-        raise ValueError("lambda_a und lambda_b müssen > 0 sein.")
+        raise ValueError("lambda_a and lambda_b must be > 0.")
     if max_goals < 4:
-        raise ValueError("max_goals muss mindestens 4 sein.")
+        raise ValueError("max_goals must be at least 4.")
 
     matrix: dict[Score, float] = {}
     for goals_a in range(max_goals + 1):
@@ -81,12 +81,12 @@ def infer_expected_goals(
 ) -> tuple[float, float]:
     for name, value in {"p_a": p_a, "p_draw": p_draw, "p_b": p_b}.items():
         if not 0 <= value <= 1:
-            raise ValueError(f"{name} muss zwischen 0 und 1 liegen.")
+            raise ValueError(f"{name} must be between 0 and 1.")
     probability_sum = p_a + p_draw + p_b
     if not math.isclose(probability_sum, 1.0, abs_tol=0.04):
-        raise ValueError("1X2-Wahrscheinlichkeiten müssen ungefähr 1 ergeben.")
+        raise ValueError("1X2 probabilities must add up to approximately 1.")
     if total_goals <= 0:
-        raise ValueError("total_goals muss > 0 sein.")
+        raise ValueError("total_goals must be > 0.")
 
     normalized_p_a = p_a / probability_sum
     normalized_p_b = p_b / probability_sum
@@ -111,10 +111,10 @@ def infer_expected_goals_from_market_difference(
     expected_goal_difference: float,
 ) -> tuple[float, float]:
     if total_goals <= 0:
-        raise ValueError("total_goals muss > 0 sein.")
+        raise ValueError("total_goals must be > 0.")
     if abs(expected_goal_difference) >= total_goals:
         raise ValueError(
-            "expected_goal_difference muss kleiner als total_goals sein."
+            "expected_goal_difference must be smaller than total_goals."
         )
 
     lambda_a = (total_goals + expected_goal_difference) / 2

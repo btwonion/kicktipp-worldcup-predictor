@@ -30,7 +30,7 @@ def test_odds_api_request_exception_exits_cleanly(monkeypatch):
         refresh=True,
     )
 
-    with pytest.raises(SystemExit, match="Quoten fehlen: request timed out"):
+    with pytest.raises(SystemExit, match="Odds are missing: request timed out"):
         kicktipp_tool._resolve_probabilities(args)
 
 
@@ -146,7 +146,7 @@ def test_cli_falls_back_to_next_probability_source(monkeypatch):
 
     def failing_odds_fetch(*args, **kwargs):
         calls.append("odds")
-        raise ValueError("THE_ODDS_API_KEY fehlt")
+        raise ValueError("THE_ODDS_API_KEY is missing")
 
     def fake_football_data_fetch(*args, **kwargs):
         calls.append("football-data")
@@ -190,7 +190,7 @@ def test_cli_falls_back_to_next_probability_source(monkeypatch):
 def test_total_goals_requires_manual_value_or_auto_source():
     args = argparse.Namespace(total_goals=None)
 
-    with pytest.raises(SystemExit, match="Erwartete Gesamttore fehlen"):
+    with pytest.raises(SystemExit, match="Expected total goals are missing"):
         kicktipp_tool._resolve_total_goals(args)
 
 
@@ -229,7 +229,7 @@ def test_total_goals_manual_value_has_priority_over_auto_source():
     )
 
     assert total_goals == pytest.approx(2.4)
-    assert source == "manuelle CLI-Eingabe"
+    assert source == "manual CLI input"
 
 
 def test_elo_uses_local_csv_before_remote(tmp_path, monkeypatch):
@@ -303,7 +303,7 @@ def test_elo_can_be_disabled(monkeypatch):
     )
 
     assert kicktipp_tool._resolve_elo(args) == EloResult(
-        None, None, "neutral / nicht verfügbar"
+        None, None, "neutral / unavailable"
     )
 
 
@@ -333,7 +333,7 @@ def test_predict_output_explains_exact_probability_and_summarizes_tendency(
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_elo",
-        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+        lambda args: EloResult(None, None, "neutral / unavailable"),
     )
     monkeypatch.setattr(
         kicktipp_tool, "infer_expected_goals", lambda *args: (1.6, 0.8)
@@ -389,12 +389,12 @@ def test_predict_output_explains_exact_probability_and_summarizes_tendency(
     assert kicktipp_tool.run_predict(args) == 0
 
     output = capsys.readouterr().out
-    assert "Wahrscheinlichkeit für genau 2:0: 17.6 %" in output
-    assert "Tendenz Sieg Mexico: 72.3 %" in output
-    assert "Tendenz der Top 5: Sieg Mexico (72.3 %)" in output
-    assert "1. 2:0 - EV 1.86 - genau dieses Ergebnis 17.6 %" in output
+    assert "Probability of exactly 2:0: 17.6 %" in output
+    assert "Outcome Mexico win: 72.3 %" in output
+    assert "Top 5 outcome: Mexico win (72.3 %)" in output
+    assert "1. 2:0 - EV 1.86 - exact score 17.6 %" in output
     assert "exakt" not in output
-    assert output.count("Tendenz") == 2
+    assert output.count("Outcome") == 1
 
 
 def test_predict_json_output(monkeypatch, capsys):
@@ -418,7 +418,7 @@ def test_predict_json_output(monkeypatch, capsys):
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_elo",
-        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+        lambda args: EloResult(None, None, "neutral / unavailable"),
     )
     monkeypatch.setattr(
         kicktipp_tool, "infer_expected_goals", lambda *args: (1.6, 0.8)
@@ -480,7 +480,7 @@ def test_predict_uses_market_goal_difference_when_available(monkeypatch):
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_elo",
-        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+        lambda args: EloResult(None, None, "neutral / unavailable"),
     )
 
     calls = []
@@ -537,12 +537,12 @@ def test_predict_quiet_output(monkeypatch, capsys):
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_total_goals",
-        lambda args, probabilities: (2.48, "manuelle CLI-Eingabe"),
+        lambda args, probabilities: (2.48, "manual CLI input"),
     )
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_elo",
-        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+        lambda args: EloResult(None, None, "neutral / unavailable"),
     )
     monkeypatch.setattr(
         kicktipp_tool, "infer_expected_goals", lambda *args: (1.6, 0.8)

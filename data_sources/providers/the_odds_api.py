@@ -39,19 +39,19 @@ def normalize_bookmaker_odds_to_probabilities(
         }
 
     if raw["home"] is None or raw["draw"] is None or raw["away"] is None:
-        raise ValueError("Odds müssen home/draw/away enthalten.")
+        raise ValueError("Odds must include home/draw/away.")
     prices = {
         "home": float(raw["home"]),
         "draw": float(raw["draw"]),
         "away": float(raw["away"]),
     }
     if any(value <= 1 for value in prices.values()):
-        raise ValueError("Dezimalquoten müssen > 1 sein.")
+        raise ValueError("Decimal odds must be > 1.")
 
     implied = {key: 1 / value for key, value in prices.items()}
     overround = sum(implied.values())
     if overround <= 0:
-        raise ValueError("Ungültige Quoten.")
+        raise ValueError("Invalid odds.")
 
     return {
         "p_a": implied["home"] / overround,
@@ -310,8 +310,8 @@ def fetch_odds_from_the_odds_api(
         return data
 
     raise DataSourceUnavailable(
-        f"Keine 1X2-Quoten für {team_a} vs {team_b} gefunden. "
-        "Nutze --p-a --p-draw --p-b."
+        f"No 1X2 odds found for {team_a} vs {team_b}. "
+        "Use --p-a --p-draw --p-b."
     )
 
 
@@ -338,7 +338,7 @@ class TheOddsApiProvider:
             bookmaker_count = total_market.get("bookmaker_count", 0)
             total_source = (
                 f"The Odds API totals ({float(total_goals):.2f}; "
-                f"{bookmaker_count} Bookmaker)"
+                f"{bookmaker_count} bookmakers)"
             )
         expected_goal_difference = data.get("expected_goal_difference")
         goal_difference_source = None
@@ -347,7 +347,7 @@ class TheOddsApiProvider:
             bookmaker_count = spread_market.get("bookmaker_count", 0)
             goal_difference_source = (
                 f"The Odds API spreads ({float(expected_goal_difference):+.2f}; "
-                f"{bookmaker_count} Bookmaker)"
+                f"{bookmaker_count} bookmakers)"
             )
         return ProbabilityResult(
             p_a=probabilities["p_a"],

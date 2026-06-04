@@ -158,7 +158,7 @@ def fetch_remote_elo_ratings(
         response.text, response.headers.get("content-type", "")
     )
     if not ratings:
-        raise DataSourceUnavailable(f"Keine Elo-Ratings in {source_url} gefunden.")
+        raise DataSourceUnavailable(f"No Elo ratings found in {source_url}.")
 
     save_to_cache(
         cache_key,
