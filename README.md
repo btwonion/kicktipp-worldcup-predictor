@@ -210,6 +210,59 @@ python kicktipp_tool.py predict \
 For scripts that only need the recommended score, use `--quiet`. It prints only
 the tip, for example `1:1`.
 
+## Match-Day Predictions
+
+Use `predict-day` to generate a compact report for a whole World Cup match day
+or round without entering every team yourself:
+
+```bash
+python kicktipp_tool.py predict-day --match-day "Match day 1"
+```
+
+The command loads the cached 2026 World Cup fixture schedule, selects the
+requested match day or round, and predicts every fixture whose teams are known.
+Match days and rounds are based on the `round` names in the fixture file, such
+as `Matchday 1`, `Round of 32`, `Semi-final`, and `Final`.
+Input matching is intentionally loose, so these are equivalent for the group
+phase:
+
+```bash
+python kicktipp_tool.py predict-day --match-day 1
+python kicktipp_tool.py predict-day --match-day "Match day 1"
+```
+
+Knockout fixtures whose teams are not known yet are displayed as pending instead
+of being predicted:
+
+```text
+Predictions for Semi-finals
+
+No ready fixtures to predict yet.
+
+Pending fixtures
+21:00  Winner Quarter-final 1 vs Winner Quarter-final 2
+```
+
+Refresh the cached fixture schedule once knockout participants are known:
+
+```bash
+python kicktipp_tool.py predict-day \
+  --match-day "Semi-finals" \
+  --refresh-fixtures
+```
+
+Write a report to a file when you do not want multiple predictions printed in
+the terminal:
+
+```bash
+python kicktipp_tool.py predict-day \
+  --match-day "Match day 1" \
+  --output predictions-match-day-1.md
+```
+
+Use `--fixtures path-or-url` to override the default fixture source with another
+[OpenFootball-style JSON file](https://github.com/openfootball/worldcup.json/blob/master/2026/worldcup.json).
+
 ## Cache Behavior
 
 Without `--refresh`, API and remote Elo responses are reused only while the

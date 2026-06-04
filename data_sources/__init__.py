@@ -115,6 +115,22 @@ def load_fixtures_from_openfootball(path_or_url: str) -> list[dict[str, Any]]:
     return _fixtures.load_fixtures_from_openfootball(path_or_url)
 
 
+def load_cached_fixtures_from_openfootball(
+    path_or_url: str = _fixtures.DEFAULT_WORLD_CUP_FIXTURES_URL,
+    *,
+    refresh: bool = False,
+    cache_dir: str | Path | None = None,
+    no_cache: bool = False,
+) -> list[dict[str, Any]]:
+    _sync_compat_globals()
+    return _fixtures.load_cached_fixtures_from_openfootball(
+        path_or_url,
+        refresh=refresh,
+        cache_dir=cache_dir if cache_dir is not None else CACHE_DIR,
+        no_cache=no_cache,
+    )
+
+
 def fetch_odds_from_the_odds_api(
     team_a: str,
     team_b: str,
@@ -256,6 +272,7 @@ __all__ = [
     "fetch_predictions_from_api_football",
     "fetch_remote_elo_ratings",
     "load_elo_ratings",
+    "load_cached_fixtures_from_openfootball",
     "load_fixtures_from_openfootball",
     "load_from_cache",
     "load_settings",

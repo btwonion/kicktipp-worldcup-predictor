@@ -576,3 +576,45 @@ def test_fixture_loader_reads_openfootball_style_json(tmp_path):
             },
         }
     ]
+
+
+def test_fixture_loader_reads_openfootball_top_level_matches_json(tmp_path):
+    fixture_file = tmp_path / "worldcup.json"
+    fixture_file.write_text(
+        json.dumps(
+            {
+                "name": "World Cup",
+                "matches": [
+                    {
+                        "round": "Round of 32",
+                        "num": 82,
+                        "date": "2026-07-01",
+                        "time": "13:00 UTC-7",
+                        "team1": "1G",
+                        "team2": "3A/E/H/I/J",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    fixtures = load_fixtures_from_openfootball(str(fixture_file))
+
+    assert fixtures == [
+        {
+            "team_a": "1G",
+            "team_b": "3A/E/H/I/J",
+            "date": "2026-07-01",
+            "time": "13:00 UTC-7",
+            "stage": "Round of 32",
+            "raw": {
+                "round": "Round of 32",
+                "num": 82,
+                "date": "2026-07-01",
+                "time": "13:00 UTC-7",
+                "team1": "1G",
+                "team2": "3A/E/H/I/J",
+            },
+        }
+    ]

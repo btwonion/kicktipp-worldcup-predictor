@@ -699,3 +699,180 @@ def test_predict_quiet_output(monkeypatch, capsys):
     assert kicktipp_tool.run_predict(args) == 0
 
     assert capsys.readouterr().out == "2:0\n"
+
+
+def test_predict_day_matches_loose_match_day_and_displays_pending(
+    tmp_path, capsys
+):
+    fixture_file = tmp_path / "fixtures.json"
+    fixture_file.write_text(
+        json.dumps(
+            {
+                "rounds": [
+                    {
+                        "name": "Match day 1",
+                        "matches": [
+                            {
+                                "date": "2026-06-11",
+                                "time": "18:00",
+                                "team1": "Mexico",
+                                "team2": "South Africa",
+                            },
+                            {
+                                "date": "2026-06-11",
+                                "time": "21:00",
+                                "team1": "Winner Group A",
+                                "team2": "Runner-up Group B",
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        kicktipp_tool.main(
+            [
+                "predict-day",
+                "--match-day",
+                "1",
+                "--fixtures",
+                str(fixture_file),
+                "--p-a",
+                "0.62",
+                "--p-draw",
+                "0.22",
+                "--p-b",
+                "0.16",
+                "--total-goals",
+                "2.48",
+                "--no-elo",
+            ]
+        )
+        == 0
+    )
+
+    output = _plain(capsys.readouterr().out)
+    assert "Predictions for Match day 1" in output
+    assert "Ready fixtures" in output
+    assert "18:00  Mexico vs South Africa" in output
+    assert "EV" in output
+    assert "Pending fixtures" in output
+    assert "21:00  Winner Group A vs Runner-up Group B" in output
+
+
+def test_predict_day_writes_markdown_report(tmp_path, capsys):
+    fixture_file = tmp_path / "fixtures.json"
+    output_file = tmp_path / "predictions.md"
+    fixture_file.write_text(
+        json.dumps(
+            {
+                "rounds": [
+                    {
+                        "name": "Semi-finals",
+                        "matches": [
+                            {
+                                "date": "2026-07-14",
+                                "time": "21:00",
+                                "team1": "Winner Quarter-final 1",
+                                "team2": "Winner Quarter-final 2",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        kicktipp_tool.main(
+            [
+                "predict-day",
+                "--match-day",
+                "semi finals",
+                "--fixtures",
+                str(fixture_file),
+                "--output",
+                str(output_file),
+            ]
+        )
+        == 0
+    )
+
+    stdout = capsys.readouterr().out
+    report = output_file.read_text(encoding="utf-8")
+    assert f"Report written to {output_file}" in stdout
+    assert "# Predictions for Semi-finals" in report
+    assert "No ready fixtures to predict yet." in report
+    assert "- 21:00  Winner Quarter-final 1 vs Winner Quarter-final 2" in report
+
+
+def test_predict_day_treats_openfootball_knockout_codes_as_pending(
+    tmp_path, capsys
+):
+    fixture_file = tmp_path / "fixtures.json"
+    fixture_file.write_text(
+        json.dumps(
+            {
+                "matches": [
+                    {
+                        "round": "Round of 32",
+                        "date": "2026-07-01",
+                        "time": "13:00 UTC-7",
+                        "team1": "1G",
+                        "team2": "3A/E/H/I/J",
+                    },
+                    {
+                        "round": "Semi-final",
+                        "date": "2026-07-14",
+                        "time": "20:00 UTC-4",
+                        "team1": "W97",
+                        "team2": "W98",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        kicktipp_tool.main(
+            [
+                "predict-day",
+                "--match-day",
+                "Round of 32",
+                "--fixtures",
+                str(fixture_file),
+            ]
+        )
+        == 0
+    )
+
+    output = _plain(capsys.readouterr().out)
+    assert "Predictions for Round of 32" in output
+    assert "No ready fixtures to predict yet." in output
+    assert "Pending fixtures" in output
+    assert "13:00 UTC-7  1G vs 3A/E/H/I/J" in output
+
+    assert (
+        kicktipp_tool.main(
+            [
+                "predict-day",
+                "--match-day",
+                "Semi-finals",
+                "--fixtures",
+                str(fixture_file),
+            ]
+        )
+        == 0
+    )
+
+    output = _plain(capsys.readouterr().out)
+    assert "Predictions for Semi-final" in output
+    assert "No ready fixtures to predict yet." in output
+    assert "Pending fixtures" in output
+    assert "Failed fixtures" not in output
+    assert "20:00 UTC-4  W97 vs W98" in output

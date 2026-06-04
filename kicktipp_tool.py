@@ -4,7 +4,9 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -17,8 +19,10 @@ from data_sources import (
     fetch_odds_from_the_odds_api,
     fetch_predictions_from_api_football,
     fetch_remote_elo_ratings,
+    load_cached_fixtures_from_openfootball,
     load_elo_ratings,
 )
+from data_sources.fixtures import DEFAULT_WORLD_CUP_FIXTURES_URL
 from data_sources.providers.base import ProbabilityProvider
 from data_sources.team_matching import team_names_match
 from models import (
@@ -33,6 +37,23 @@ from models import (
 from scoring import RankedTip, rank_tips
 
 SECRET_URL_PARAM_RE = re.compile(r"([?&](?:apiKey|key)=)[^&\s)]+")
+PENDING_TEAM_RE = re.compile(
+    r"(^|\b)(winner|runner[- ]?up|loser|tbd|tba|to be decided)\b"
+    r"|^\s*\d+(st|nd|rd|th)?\s+group\b"
+    r"|^\s*[123][A-L](?:/[A-L])*\s*$"
+    r"|^\s*[WL]\d+\s*$",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class PredictionReport:
+    prediction_input: PredictionInput
+    lambda_a: float
+    lambda_b: float
+    best: RankedTip
+    top_tips: list[RankedTip]
+    payload: dict[str, Any]
 
 
 def _format_score(score: tuple[int, int]) -> str:
@@ -195,12 +216,117 @@ def _add_predict_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=run_predict)
 
 
+def _add_batch_prediction_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--p-a", type=float)
+    parser.add_argument("--p-draw", type=float)
+    parser.add_argument("--p-b", type=float)
+    parser.add_argument("--total-goals", type=float)
+    parser.add_argument("--elo-a", type=float)
+    parser.add_argument("--elo-b", type=float)
+    parser.add_argument(
+        "--use-elo",
+        action="store_true",
+        default=True,
+        help="Load Elo ratings. Enabled by default.",
+    )
+    parser.add_argument(
+        "--no-elo",
+        action="store_false",
+        dest="use_elo",
+        help="Do not load Elo ratings automatically.",
+    )
+    parser.add_argument("--elo-path", default="data/elo_ratings.csv")
+    parser.add_argument(
+        "--elo-url",
+        help=(
+            "Remote source for Elo ratings. Default: international-football.net "
+            "for the current date."
+        ),
+    )
+    parser.add_argument(
+        "--use-odds-api",
+        action="store_true",
+        help="Restrict automatic 1X2 lookup to The Odds API.",
+    )
+    parser.add_argument(
+        "--use-football-data",
+        action="store_true",
+        help="Restrict automatic 1X2 lookup to football-data.org.",
+    )
+    parser.add_argument(
+        "--use-api-football",
+        action="store_true",
+        help="Restrict automatic 1X2 lookup to API-Football predictions.",
+    )
+    parser.add_argument(
+        "--odds-sport-key",
+        default="soccer_fifa_world_cup",
+        help="The Odds API sport key, e.g. soccer_fifa_world_cup or soccer_epl.",
+    )
+    parser.add_argument("--odds-regions", default="eu")
+    parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--cache-dir", default=None)
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not read from or write to the cache.",
+    )
+    parser.add_argument(
+        "--cache-ttl",
+        type=float,
+        default=None,
+        help="Cache TTL in hours. Default: 24.",
+    )
+    parser.add_argument("--json", action="store_true", dest="output_json")
+    parser.add_argument("--max-goals", type=int, default=6)
+    parser.add_argument("--tip-max-goals", type=int, default=5)
+    parser.add_argument("--rho", type=float, default=-0.08)
+
+
+def _add_predict_day_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "predict-day",
+        help="Generate predictions for a tournament match day or round.",
+    )
+    selector = parser.add_mutually_exclusive_group(required=True)
+    selector.add_argument(
+        "--match-day",
+        "--play-day",
+        dest="match_day",
+        help='Match day or round, e.g. "1", "Match day 1", or "Semi-finals".',
+    )
+    selector.add_argument("--date", help="Fixture date in YYYY-MM-DD format.")
+    parser.add_argument(
+        "--fixtures",
+        default=DEFAULT_WORLD_CUP_FIXTURES_URL,
+        help=(
+            "OpenFootball-style fixture JSON path or URL. Defaults to the "
+            "cached 2026 World Cup fixture source."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-fixtures",
+        action="store_true",
+        help="Refresh the cached fixture schedule before selecting matches.",
+    )
+    parser.add_argument(
+        "--output",
+        help=(
+            "Write the report to a file. .json writes JSON; other suffixes "
+            "write Markdown."
+        ),
+    )
+    _add_batch_prediction_options(parser)
+    parser.set_defaults(func=run_predict_day)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Local Kicktipp tool with Poisson model and EV ranking."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_predict_parser(subparsers)
+    _add_predict_day_parser(subparsers)
     return parser
 
 
@@ -223,7 +349,7 @@ def _source_label(source: str) -> str:
     return _provider_map()[source].label
 
 
-def _safe_error_message(error: Exception) -> str:
+def _safe_error_message(error: BaseException) -> str:
     return SECRET_URL_PARAM_RE.sub(r"\1<redacted>", str(error))
 
 
@@ -571,7 +697,7 @@ def _prediction_payload(
     }
 
 
-def run_predict(args: argparse.Namespace) -> int:
+def _build_prediction_report(args: argparse.Namespace) -> PredictionReport:
     probabilities = _resolve_probabilities(args)
     total_goals, goals_source = _resolve_total_goals(args, probabilities)
     elo = _resolve_elo(args)
@@ -602,48 +728,307 @@ def run_predict(args: argparse.Namespace) -> int:
     tips = rank_tips(matrix, tip_max_goals=args.tip_max_goals)
     best = tips[0]
     top_tips = tips[:5]
+    payload = _prediction_payload(
+        prediction_input, lambda_a, lambda_b, best, top_tips
+    )
+    payload["data_sources"]["total_goals"] = goals_source
+    return PredictionReport(
+        prediction_input=prediction_input,
+        lambda_a=lambda_a,
+        lambda_b=lambda_b,
+        best=best,
+        top_tips=top_tips,
+        payload=payload,
+    )
 
-    if getattr(args, "output_json", False):
-        payload = _prediction_payload(
-            prediction_input, lambda_a, lambda_b, best, top_tips
-        )
-        payload["data_sources"]["total_goals"] = goals_source
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return 0
 
-    if getattr(args, "quiet", False):
-        print(_format_score(best["score"]))
-        return 0
+def _print_prediction_report(report: PredictionReport) -> None:
+    prediction_input = report.prediction_input
+    team_a = prediction_input.team_a
+    team_b = prediction_input.team_b
+    probabilities = prediction_input.probabilities
+    elo = prediction_input.elo
 
-    for line in _boxed_summary(args.team_a, args.team_b, best):
+    for line in _boxed_summary(team_a, team_b, report.best):
         print(line)
     print()
     print(_color("Key model signals", "1", "36"))
     print(
-        f"  {'xG':<15} {args.team_a} {lambda_a:.2f}   "
-        f"{args.team_b} {lambda_b:.2f}"
+        f"  {'xG':<15} {team_a} {report.lambda_a:.2f}   "
+        f"{team_b} {report.lambda_b:.2f}"
     )
-    print(f"  {'Total goals':<15} {total_goals:.2f}")
+    print(f"  {'Total goals':<15} {prediction_input.total_goals:.2f}")
     print(
         f"  {'Handicap':<15} "
-        f"{_format_handicap_line(probabilities.expected_goal_difference, args.team_a)}"
+        f"{_format_handicap_line(probabilities.expected_goal_difference, team_a)}"
     )
-    print(f"  {'Elo':<15} {_format_elo_signal(elo, args.team_a)}")
+    print(f"  {'Elo':<15} {_format_elo_signal(elo, team_a)}")
     print()
     print(_color("1X2 probabilities", "1", "36"))
-    print(f"  {args.team_a:<15} {_compact_probability(probabilities.p_a)}")
+    print(f"  {team_a:<15} {_compact_probability(probabilities.p_a)}")
     print(f"  {'Draw':<15} {_compact_probability(probabilities.p_draw)}")
-    print(f"  {args.team_b:<15} {_compact_probability(probabilities.p_b)}")
+    print(f"  {team_b:<15} {_compact_probability(probabilities.p_b)}")
     print()
     print(_color("Top scorelines", "1", "36"))
-    for index, tip in enumerate(top_tips, start=1):
+    for index, tip in enumerate(report.top_tips, start=1):
         print(
             f"  {index}. {_display_score(tip['score'])}  "
-            f"{_tendency_label(tip['score'], args.team_a, args.team_b)}   "
+            f"{_tendency_label(tip['score'], team_a, team_b)}   "
             f"EV {tip['expected_points']:.2f}   "
             f"Prob {_compact_probability(tip['exact_probability']):>5}"
         )
 
+
+def run_predict(args: argparse.Namespace) -> int:
+    report = _build_prediction_report(args)
+    if getattr(args, "output_json", False):
+        print(json.dumps(report.payload, ensure_ascii=False, indent=2))
+        return 0
+
+    if getattr(args, "quiet", False):
+        print(_format_score(report.best["score"]))
+        return 0
+
+    _print_prediction_report(report)
+    return 0
+
+
+def _normalize_selector(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+
+
+def _fixture_matches_selection(
+    fixture: dict[str, Any],
+    *,
+    match_day: str | None,
+    date: str | None,
+) -> bool:
+    if date is not None:
+        return fixture.get("date") == date
+
+    if match_day is None:
+        return False
+
+    stage = str(fixture.get("stage") or "")
+    selector = match_day.strip()
+    if selector.isdigit():
+        pattern = rf"\b(match\s*day|matchday|spieltag)\s*{re.escape(selector)}\b"
+        return bool(re.search(pattern, stage, flags=re.IGNORECASE))
+
+    normalized_selector = _normalize_selector(selector)
+    normalized_stage = _normalize_selector(stage)
+    return (
+        normalized_selector in normalized_stage
+        or normalized_stage in normalized_selector
+    )
+
+
+def _is_pending_team(team_name: str) -> bool:
+    return bool(PENDING_TEAM_RE.search(team_name))
+
+
+def _is_pending_fixture(fixture: dict[str, Any]) -> bool:
+    return _is_pending_team(str(fixture["team_a"])) or _is_pending_team(
+        str(fixture["team_b"])
+    )
+
+
+def _fixture_time(fixture: dict[str, Any]) -> str:
+    value = fixture.get("time")
+    return str(value) if value else "--:--"
+
+
+def _fixture_match_text(fixture: dict[str, Any]) -> str:
+    return f"{fixture['team_a']} vs {fixture['team_b']}"
+
+
+def _selection_label(
+    args: argparse.Namespace,
+    selected_fixtures: list[dict[str, Any]],
+) -> str:
+    if selected_fixtures and selected_fixtures[0].get("stage"):
+        return str(selected_fixtures[0]["stage"])
+    if args.match_day:
+        return args.match_day
+    return args.date
+
+
+def _prediction_args_for_fixture(
+    args: argparse.Namespace,
+    fixture: dict[str, Any],
+) -> argparse.Namespace:
+    values = vars(args).copy()
+    values["team_a"] = fixture["team_a"]
+    values["team_b"] = fixture["team_b"]
+    values["match_date"] = fixture.get("date")
+    values["football_data_match_id"] = None
+    values["api_football_fixture_id"] = None
+    return argparse.Namespace(**values)
+
+
+def _pending_payload(fixture: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "team_a": fixture["team_a"],
+        "team_b": fixture["team_b"],
+        "date": fixture.get("date"),
+        "time": fixture.get("time"),
+        "stage": fixture.get("stage"),
+    }
+
+
+def _build_predict_day_payload(args: argparse.Namespace) -> dict[str, Any]:
+    fixtures = load_cached_fixtures_from_openfootball(
+        args.fixtures,
+        refresh=args.refresh_fixtures,
+        cache_dir=args.cache_dir,
+        no_cache=args.no_cache,
+    )
+    selected = [
+        fixture
+        for fixture in fixtures
+        if _fixture_matches_selection(
+            fixture,
+            match_day=args.match_day,
+            date=args.date,
+        )
+    ]
+    if not selected:
+        selector = args.match_day or args.date
+        raise SystemExit(f"No fixtures found for {selector}.")
+
+    ready: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+
+    for fixture in selected:
+        if _is_pending_fixture(fixture):
+            pending.append(_pending_payload(fixture))
+            continue
+
+        try:
+            report = _build_prediction_report(
+                _prediction_args_for_fixture(args, fixture)
+            )
+        except SystemExit as error:
+            failed.append(
+                {
+                    "fixture": _pending_payload(fixture),
+                    "error": _safe_error_message(error),
+                }
+            )
+            continue
+        except (ValueError, DataSourceUnavailable, requests.RequestException) as error:
+            failed.append(
+                {
+                    "fixture": _pending_payload(fixture),
+                    "error": _safe_error_message(error),
+                }
+            )
+            continue
+
+        ready.append(
+            {
+                "fixture": _pending_payload(fixture),
+                "prediction": report.payload,
+            }
+        )
+
+    return {
+        "selection": {
+            "label": _selection_label(args, selected),
+            "match_day": args.match_day,
+            "date": args.date,
+        },
+        "ready": ready,
+        "pending": pending,
+        "failed": failed,
+    }
+
+
+def _ready_line(item: dict[str, Any]) -> str:
+    fixture = item["fixture"]
+    recommendation = item["prediction"]["recommendation"]
+    match_text = _fixture_match_text(fixture)
+    return (
+        f"{_fixture_time(fixture)}  {match_text:<32}  "
+        f"{recommendation['score']:<5} "
+        f"EV {recommendation['expected_points']:.2f}   "
+        f"{recommendation['tendency']} "
+        f"{_compact_probability(recommendation['tendency_probability'])}"
+    )
+
+
+def _pending_line(fixture: dict[str, Any]) -> str:
+    return f"{_fixture_time(fixture)}  {_fixture_match_text(fixture)}"
+
+
+def _format_predict_day_text(payload: dict[str, Any]) -> str:
+    lines = [f"Predictions for {payload['selection']['label']}", ""]
+
+    if payload["ready"]:
+        lines.append("Ready fixtures")
+        lines.extend(_ready_line(item) for item in payload["ready"])
+    else:
+        lines.append("No ready fixtures to predict yet.")
+
+    if payload["pending"]:
+        lines.extend(["", "Pending fixtures"])
+        lines.extend(_pending_line(fixture) for fixture in payload["pending"])
+
+    if payload["failed"]:
+        lines.extend(["", "Failed fixtures"])
+        for item in payload["failed"]:
+            lines.append(f"{_pending_line(item['fixture'])}: {item['error']}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _format_predict_day_markdown(payload: dict[str, Any]) -> str:
+    lines = [f"# Predictions for {payload['selection']['label']}", ""]
+
+    if payload["ready"]:
+        lines.extend(["## Ready Fixtures", ""])
+        for item in payload["ready"]:
+            lines.append(f"- {_ready_line(item)}")
+    else:
+        lines.append("No ready fixtures to predict yet.")
+
+    if payload["pending"]:
+        lines.extend(["", "## Pending Fixtures", ""])
+        lines.extend(f"- {_pending_line(fixture)}" for fixture in payload["pending"])
+
+    if payload["failed"]:
+        lines.extend(["", "## Failed Fixtures", ""])
+        for item in payload["failed"]:
+            lines.append(f"- {_pending_line(item['fixture'])}: {item['error']}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _write_predict_day_report(payload: dict[str, Any], output_path: str) -> None:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.casefold() == ".json":
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return
+    path.write_text(_format_predict_day_markdown(payload), encoding="utf-8")
+
+
+def run_predict_day(args: argparse.Namespace) -> int:
+    payload = _build_predict_day_payload(args)
+    if args.output:
+        _write_predict_day_report(payload, args.output)
+        print(f"Report written to {args.output}")
+        return 0
+
+    if getattr(args, "output_json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print(_format_predict_day_text(payload), end="")
     return 0
 
 
