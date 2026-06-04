@@ -1,9 +1,11 @@
 import argparse
+import json
 
 import pytest
 import requests
 
 import kicktipp_tool
+from models import EloResult, ProbabilityResult
 
 
 def test_odds_api_request_exception_exits_cleanly(monkeypatch):
@@ -92,17 +94,12 @@ def test_cli_passes_configured_odds_sport_key(monkeypatch):
         refresh=False,
     )
 
-    (
-        probabilities,
-        source,
-        total_goals,
-        total_source,
-    ) = kicktipp_tool._resolve_probabilities(args)
+    result = kicktipp_tool._resolve_probabilities(args)
 
-    assert probabilities == {"p_a": 0.4, "p_draw": 0.3, "p_b": 0.3}
-    assert source == "The Odds API"
-    assert total_goals is None
-    assert total_source is None
+    assert result.probabilities == {"p_a": 0.4, "p_draw": 0.3, "p_b": 0.3}
+    assert result.source == "The Odds API"
+    assert result.expected_total_goals is None
+    assert result.total_goals_source is None
     assert seen["sport_key"] == "soccer_epl"
     assert seen["regions"] == "uk"
 
@@ -135,18 +132,13 @@ def test_cli_tries_all_probability_sources_by_default(monkeypatch):
         refresh=False,
     )
 
-    (
-        probabilities,
-        source,
-        total_goals,
-        total_source,
-    ) = kicktipp_tool._resolve_probabilities(args)
+    result = kicktipp_tool._resolve_probabilities(args)
 
     assert calls == ["odds"]
-    assert probabilities == {"p_a": 0.41, "p_draw": 0.29, "p_b": 0.30}
-    assert source == "The Odds API"
-    assert total_goals is None
-    assert total_source is None
+    assert result.probabilities == {"p_a": 0.41, "p_draw": 0.29, "p_b": 0.30}
+    assert result.source == "The Odds API"
+    assert result.expected_total_goals is None
+    assert result.total_goals_source is None
 
 
 def test_cli_falls_back_to_next_probability_source(monkeypatch):
@@ -186,18 +178,13 @@ def test_cli_falls_back_to_next_probability_source(monkeypatch):
         refresh=False,
     )
 
-    (
-        probabilities,
-        source,
-        total_goals,
-        total_source,
-    ) = kicktipp_tool._resolve_probabilities(args)
+    result = kicktipp_tool._resolve_probabilities(args)
 
     assert calls == ["odds", "football-data"]
-    assert probabilities == {"p_a": 0.39, "p_draw": 0.31, "p_b": 0.30}
-    assert source == "football-data.org"
-    assert total_goals is None
-    assert total_source is None
+    assert result.probabilities == {"p_a": 0.39, "p_draw": 0.31, "p_b": 0.30}
+    assert result.source == "football-data.org"
+    assert result.expected_total_goals is None
+    assert result.total_goals_source is None
 
 
 def test_total_goals_requires_manual_value_or_auto_source():
@@ -211,7 +198,15 @@ def test_total_goals_can_use_auto_source():
     args = argparse.Namespace(total_goals=None)
 
     total_goals, source = kicktipp_tool._resolve_total_goals(
-        args, 2.75, "The Odds API totals"
+        args,
+        ProbabilityResult(
+            0.4,
+            0.3,
+            0.3,
+            "The Odds API",
+            expected_total_goals=2.75,
+            total_goals_source="The Odds API totals",
+        ),
     )
 
     assert total_goals == pytest.approx(2.75)
@@ -222,7 +217,15 @@ def test_total_goals_manual_value_has_priority_over_auto_source():
     args = argparse.Namespace(total_goals=2.4)
 
     total_goals, source = kicktipp_tool._resolve_total_goals(
-        args, 2.75, "The Odds API totals"
+        args,
+        ProbabilityResult(
+            0.4,
+            0.3,
+            0.3,
+            "The Odds API",
+            expected_total_goals=2.75,
+            total_goals_source="The Odds API totals",
+        ),
     )
 
     assert total_goals == pytest.approx(2.4)
@@ -248,11 +251,11 @@ def test_elo_uses_local_csv_before_remote(tmp_path, monkeypatch):
         refresh=False,
     )
 
-    elo_a, elo_b, source = kicktipp_tool._resolve_elo(args)
+    result = kicktipp_tool._resolve_elo(args)
 
-    assert elo_a == pytest.approx(2139)
-    assert elo_b == pytest.approx(2085)
-    assert source == str(elo_file)
+    assert result.elo_a == pytest.approx(2139)
+    assert result.elo_b == pytest.approx(2085)
+    assert result.source == str(elo_file)
 
 
 def test_elo_falls_back_to_remote_when_local_file_is_missing(monkeypatch):
@@ -275,11 +278,11 @@ def test_elo_falls_back_to_remote_when_local_file_is_missing(monkeypatch):
         refresh=True,
     )
 
-    elo_a, elo_b, source = kicktipp_tool._resolve_elo(args)
+    result = kicktipp_tool._resolve_elo(args)
 
-    assert elo_a == pytest.approx(2139)
-    assert elo_b == pytest.approx(2085)
-    assert source == "https://example.test/elo"
+    assert result.elo_a == pytest.approx(2139)
+    assert result.elo_b == pytest.approx(2085)
+    assert result.source == "https://example.test/elo"
     assert seen == {"source_url": "https://example.test/elo", "refresh": True}
 
 
@@ -299,10 +302,8 @@ def test_elo_can_be_disabled(monkeypatch):
         refresh=False,
     )
 
-    assert kicktipp_tool._resolve_elo(args) == (
-        None,
-        None,
-        "neutral / nicht verfügbar",
+    assert kicktipp_tool._resolve_elo(args) == EloResult(
+        None, None, "neutral / nicht verfügbar"
     )
 
 
@@ -312,25 +313,27 @@ def test_predict_output_explains_exact_probability_and_summarizes_tendency(
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_probabilities",
-        lambda args: (
-            {"p_a": 0.62, "p_draw": 0.22, "p_b": 0.16},
+        lambda args: ProbabilityResult(
+            0.62,
+            0.22,
+            0.16,
             "Test odds",
-            2.48,
-            "Test totals",
+            expected_total_goals=2.48,
+            total_goals_source="Test totals",
         ),
     )
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_total_goals",
-        lambda args, auto_total_goals, auto_total_source: (
-            auto_total_goals,
-            auto_total_source,
+        lambda args, probabilities: (
+            probabilities.expected_total_goals,
+            probabilities.total_goals_source,
         ),
     )
     monkeypatch.setattr(
         kicktipp_tool,
         "_resolve_elo",
-        lambda args: (None, None, "neutral / nicht verfügbar"),
+        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
     )
     monkeypatch.setattr(
         kicktipp_tool, "infer_expected_goals", lambda *args: (1.6, 0.8)
@@ -392,3 +395,113 @@ def test_predict_output_explains_exact_probability_and_summarizes_tendency(
     assert "1. 2:0 - EV 1.86 - genau dieses Ergebnis 17.6 %" in output
     assert "exakt" not in output
     assert output.count("Tendenz") == 2
+
+
+def test_predict_json_output(monkeypatch, capsys):
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_probabilities",
+        lambda args: ProbabilityResult(
+            0.62,
+            0.22,
+            0.16,
+            "Test odds",
+            expected_total_goals=2.48,
+            total_goals_source="Test totals",
+        ),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_total_goals",
+        lambda args, probabilities: (2.48, "Test totals"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_elo",
+        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool, "infer_expected_goals", lambda *args: (1.6, 0.8)
+    )
+    monkeypatch.setattr(kicktipp_tool, "build_score_matrix", lambda *args: {})
+    monkeypatch.setattr(
+        kicktipp_tool, "apply_low_score_adjustment", lambda matrix, rho: matrix
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "rank_tips",
+        lambda matrix, tip_max_goals: [
+            {
+                "score": (2, 0),
+                "expected_points": 1.86,
+                "exact_probability": 0.176,
+                "tendency_probability": 0.723,
+            }
+        ],
+    )
+    args = argparse.Namespace(
+        team_a="Mexico",
+        team_b="South Africa",
+        max_goals=6,
+        tip_max_goals=5,
+        rho=-0.08,
+        output_json=True,
+        quiet=False,
+    )
+
+    assert kicktipp_tool.run_predict(args) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["recommendation"]["score"] == "2:0"
+    assert payload["data_sources"]["probabilities"] == "Test odds"
+    assert payload["inputs"]["total_goals"] == pytest.approx(2.48)
+
+
+def test_predict_quiet_output(monkeypatch, capsys):
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_probabilities",
+        lambda args: ProbabilityResult(0.62, 0.22, 0.16, "Test odds"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_total_goals",
+        lambda args, probabilities: (2.48, "manuelle CLI-Eingabe"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_elo",
+        lambda args: EloResult(None, None, "neutral / nicht verfügbar"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool, "infer_expected_goals", lambda *args: (1.6, 0.8)
+    )
+    monkeypatch.setattr(kicktipp_tool, "build_score_matrix", lambda *args: {})
+    monkeypatch.setattr(
+        kicktipp_tool, "apply_low_score_adjustment", lambda matrix, rho: matrix
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "rank_tips",
+        lambda matrix, tip_max_goals: [
+            {
+                "score": (2, 0),
+                "expected_points": 1.86,
+                "exact_probability": 0.176,
+                "tendency_probability": 0.723,
+            }
+        ],
+    )
+    args = argparse.Namespace(
+        team_a="Mexico",
+        team_b="South Africa",
+        max_goals=6,
+        tip_max_goals=5,
+        rho=-0.08,
+        output_json=False,
+        quiet=True,
+    )
+
+    assert kicktipp_tool.run_predict(args) == 0
+
+    assert capsys.readouterr().out == "2:0\n"

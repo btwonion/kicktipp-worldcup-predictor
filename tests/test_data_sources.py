@@ -1,4 +1,6 @@
 import json
+import os
+import time
 
 import pytest
 
@@ -14,6 +16,7 @@ from data_sources import (
     load_from_cache,
     normalize_bookmaker_odds_to_probabilities,
     save_to_cache,
+    team_names_match,
 )
 
 
@@ -30,9 +33,9 @@ def test_odds_normalization_removes_bookmaker_margin():
         {"home": 1.90, "draw": 3.40, "away": 4.20}
     )
 
-    assert probabilities["p_a"] + probabilities["p_draw"] + probabilities["p_b"] == pytest.approx(
-        1.0
-    )
+    assert (
+        probabilities["p_a"] + probabilities["p_draw"] + probabilities["p_b"]
+    ) == pytest.approx(1.0)
     assert probabilities["bookmaker_margin"] > 0
 
 
@@ -48,7 +51,9 @@ def test_load_elo_ratings_reads_local_csv(tmp_path):
 
 def test_load_elo_ratings_accepts_clubelo_style_csv(tmp_path):
     elo_file = tmp_path / "clubelo.csv"
-    elo_file.write_text("Rank,Club,Country,Elo\n1,ManCity,ENG,2074.42\n", encoding="utf-8")
+    elo_file.write_text(
+        "Rank,Club,Country,Elo\n1,ManCity,ENG,2074.42\n", encoding="utf-8"
+    )
 
     assert load_elo_ratings(str(elo_file)) == {"ManCity": 2074.42}
 
@@ -140,6 +145,53 @@ def test_odds_api_uses_cache_without_api_key_when_not_refreshing(tmp_path, monke
     )
 
     assert fetch_odds_from_the_odds_api("Argentina", "France") == cached
+
+
+def test_odds_api_ignores_cache_older_than_one_day(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_sources, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        data_sources,
+        "load_settings",
+        lambda: Settings(the_odds_api_key=None),
+    )
+    cache_key = "the_odds_api:soccer_fifa_world_cup:eu:h2h_totals:Argentina:France"
+    save_to_cache(
+        cache_key,
+        {
+            "source": "stale cache",
+            "probabilities": {"p_a": 0.4, "p_draw": 0.3, "p_b": 0.3},
+        },
+    )
+    old_timestamp = time.time() - 25 * 60 * 60
+    os.utime(data_sources._cache_path(cache_key), (old_timestamp, old_timestamp))
+
+    with pytest.raises(ValueError, match="THE_ODDS_API_KEY fehlt"):
+        fetch_odds_from_the_odds_api("Argentina", "France")
+
+
+def test_no_cache_ignores_cached_api_payload(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_sources, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        data_sources,
+        "load_settings",
+        lambda: Settings(the_odds_api_key=None),
+    )
+    cache_key = "the_odds_api:soccer_fifa_world_cup:eu:h2h_totals:Argentina:France"
+    save_to_cache(
+        cache_key,
+        {
+            "source": "cached",
+            "probabilities": {"p_a": 0.4, "p_draw": 0.3, "p_b": 0.3},
+        },
+    )
+
+    with pytest.raises(ValueError, match="THE_ODDS_API_KEY fehlt"):
+        fetch_odds_from_the_odds_api("Argentina", "France", no_cache=True)
+
+
+def test_team_matching_handles_aliases_and_accents():
+    assert team_names_match("Germany", ["Deutschland"])
+    assert team_names_match("Côte d'Ivoire", ["Cote d Ivoire"])
 
 
 def test_odds_api_default_uses_valid_world_cup_sport_key(tmp_path, monkeypatch):

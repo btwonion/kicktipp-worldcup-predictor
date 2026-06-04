@@ -37,7 +37,7 @@ Dadurch wird direkt auf den erwarteten Punktwert optimiert.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ## Standardnutzung
@@ -73,6 +73,18 @@ python kicktipp_tool.py predict \
   --total-goals 2.45 \
   --refresh
 ```
+
+Ohne `--refresh` verwendet das Tool API- und Remote-Elo-Cache nur, wenn die Cache-Datei höchstens einen Tag alt ist. Ältere Cache-Dateien lösen automatisch einen neuen API-Abruf aus. Cache-Verhalten kann explizit gesteuert werden:
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "Argentina" \
+  --team-b "France" \
+  --cache-dir /tmp/kicktipp-cache \
+  --cache-ttl 6
+```
+
+`--cache-ttl` ist in Stunden angegeben. `--no-cache` überspringt Lesen und Schreiben des Cache vollständig.
 
 ## API-Keys
 
@@ -128,6 +140,21 @@ python kicktipp_tool.py predict \
   --elo-b 2081
 ```
 
+Für Automatisierung gibt es JSON-Ausgabe:
+
+```bash
+python kicktipp_tool.py predict \
+  --team-a "Argentina" \
+  --team-b "France" \
+  --p-a 0.36 \
+  --p-draw 0.29 \
+  --p-b 0.35 \
+  --total-goals 2.45 \
+  --json
+```
+
+Für Skripte, die nur den Tipp brauchen, gibt `--quiet` nur das Ergebnis aus, zum Beispiel `1:1`.
+
 ## Quellen gezielt einschränken
 
 Die API-Flags sind nicht mehr nötig. Sobald mindestens ein Quellen-Flag gesetzt ist, probiert das Tool nur diese ausgewählten Quellen.
@@ -143,7 +170,7 @@ python kicktipp_tool.py predict \
   --refresh
 ```
 
-Der Default für `--odds-sport-key` ist `soccer_fifa_world_cup`. Für andere Wettbewerbe muss ein gültiger The-Odds-API-Sport-Key gesetzt werden, zum Beispiel `soccer_epl`. API-Antworten werden unter `cache/` gespeichert. Ohne `--refresh` versucht das Tool zuerst, den Cache zu verwenden.
+Der Default für `--odds-sport-key` ist `soccer_fifa_world_cup`. Für andere Wettbewerbe muss ein gültiger The-Odds-API-Sport-Key gesetzt werden, zum Beispiel `soccer_epl`. API-Antworten werden unter `cache/` gespeichert. Ohne `--refresh` verwendet das Tool Cache-Dateien nur, wenn sie höchstens einen Tag alt sind.
 
 football-data.org:
 
@@ -197,7 +224,7 @@ Die Reihenfolge ist:
 2. lokale `--elo-path` CSV, standardmäßig `data/elo_ratings.csv`
 3. Remote-Elo, standardmäßig `international-football.net` für das aktuelle Datum
 
-`international-football.net` veröffentlicht Nationalteam-Elo-Tabellen nach Datum und weist sie als von `eloratings.net` berechnet aus. Die Remote-Antwort wird unter `cache/` gespeichert; mit `--refresh` wird sie neu abgerufen.
+`international-football.net` veröffentlicht Nationalteam-Elo-Tabellen nach Datum und weist sie als von `eloratings.net` berechnet aus. Die Remote-Antwort wird unter `cache/` gespeichert; Cache-Dateien älter als ein Tag werden automatisch neu abgerufen, mit `--refresh` wird der Cache immer übersprungen.
 
 Du kannst eine andere CSV- oder HTML-Quelle setzen, solange sie `team,elo`, `country,rating`, `club,elo` oder eine Rangliste im Format `1. Team 2139` enthält:
 
@@ -217,14 +244,19 @@ python kicktipp_tool.py predict \
 Tests sind verpflichtend und liegen unter `tests/`.
 
 ```bash
-pip install -r requirements.txt
-pytest
+python -m pytest
+ruff check .
+mypy .
 ```
 
 ## Dateien
 
 - `kicktipp_tool.py`: CLI
-- `models.py`: Poisson-Modell und Lambda-Herleitung
+- `models.py`: Poisson-Modell, Lambda-Herleitung und typed result models
 - `scoring.py`: Kicktipp-Punkte, EV und Ranking
-- `data_sources.py`: Fixtures, Elo, Odds API, Cache
+- `data_sources/cache.py`: Cache-Pfade, TTL und Lesen/Schreiben
+- `data_sources/elo.py`: lokale und Remote-Elo-Ratings
+- `data_sources/fixtures.py`: OpenFootball-Fixtures
+- `data_sources/providers/`: The Odds API, football-data.org und API-Football
+- `data_sources/team_matching.py`: Alias-, Akzent- und Fuzzy-Matching
 - `config.py`: `.env`-Konfiguration

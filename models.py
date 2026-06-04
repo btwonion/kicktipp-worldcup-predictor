@@ -1,9 +1,42 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
+from typing import Any
 
 
 Score = tuple[int, int]
+
+
+@dataclass(frozen=True)
+class ProbabilityResult:
+    p_a: float
+    p_draw: float
+    p_b: float
+    source: str
+    expected_total_goals: float | None = None
+    total_goals_source: str | None = None
+    raw: dict[str, Any] | None = None
+
+    @property
+    def probabilities(self) -> dict[str, float]:
+        return {"p_a": self.p_a, "p_draw": self.p_draw, "p_b": self.p_b}
+
+
+@dataclass(frozen=True)
+class EloResult:
+    elo_a: float | None
+    elo_b: float | None
+    source: str
+
+
+@dataclass(frozen=True)
+class PredictionInput:
+    team_a: str
+    team_b: str
+    probabilities: ProbabilityResult
+    total_goals: float
+    elo: EloResult
 
 
 def poisson_pmf(k: int, lambda_: float) -> float:
