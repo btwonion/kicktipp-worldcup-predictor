@@ -24,6 +24,7 @@ TEAM_ALIASES: dict[str, set[str]] = {
     "congo dr": {
         "cod",
         "congo democratic republic",
+        "dem rep of congo",
         "democratic republic of congo",
         "dr congo",
         "dr kongo",

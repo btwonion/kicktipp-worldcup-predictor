@@ -20,6 +20,7 @@ from data_sources import (
     load_elo_ratings,
 )
 from data_sources.providers.base import ProbabilityProvider
+from data_sources.team_matching import team_names_match
 from models import (
     EloResult,
     PredictionInput,
@@ -176,6 +177,8 @@ def _rating_for_team(ratings: dict[str, float], team_name: str) -> float | None:
     expected = _normalize_lookup_name(team_name)
     for candidate, rating in ratings.items():
         if _normalize_lookup_name(candidate) == expected:
+            return rating
+        if team_names_match(team_name, [candidate], allow_fuzzy=False):
             return rating
     return None
 

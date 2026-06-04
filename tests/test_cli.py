@@ -286,6 +286,29 @@ def test_elo_falls_back_to_remote_when_local_file_is_missing(monkeypatch):
     assert seen == {"source_url": "https://example.test/elo", "refresh": True}
 
 
+def test_elo_remote_lookup_matches_team_aliases(monkeypatch):
+    def fake_remote(source_url, refresh):
+        return {"Portugal": 1984.0, "Dem. Rep. of Congo": 1655.0}
+
+    monkeypatch.setattr(kicktipp_tool, "fetch_remote_elo_ratings", fake_remote)
+    args = argparse.Namespace(
+        team_a="Portugal",
+        team_b="DR Congo",
+        elo_a=None,
+        elo_b=None,
+        use_elo=True,
+        elo_path="missing.csv",
+        elo_url="https://example.test/elo",
+        refresh=True,
+    )
+
+    result = kicktipp_tool._resolve_elo(args)
+
+    assert result.elo_a == pytest.approx(1984)
+    assert result.elo_b == pytest.approx(1655)
+    assert result.source == "https://example.test/elo"
+
+
 def test_elo_can_be_disabled(monkeypatch):
     def failing_remote(*args, **kwargs):
         raise AssertionError("remote Elo should not be called")
