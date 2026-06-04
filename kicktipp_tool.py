@@ -43,6 +43,63 @@ def _probability(value: float) -> str:
     return f"{value * 100:.1f} %"
 
 
+def _compact_probability(value: float) -> str:
+    return f"{value * 100:.1f}%"
+
+
+def _color(text: str, *codes: str) -> str:
+    return f"\033[{';'.join(codes)}m{text}\033[0m"
+
+
+def _display_score(score: tuple[int, int]) -> str:
+    return f"{score[0]}–{score[1]}"
+
+
+def _format_number(value: float) -> str:
+    return f"{value:g}"
+
+
+def _format_elo_signal(elo: EloResult, team_a: str) -> str:
+    if elo.elo_a is None or elo.elo_b is None:
+        return elo.source
+
+    diff = elo.elo_a - elo.elo_b
+    return f"{team_a} {diff:+g}"
+
+
+def _format_handicap_line(
+    expected_goal_difference: float | None, team_a: str
+) -> str:
+    if expected_goal_difference is None:
+        return "not available"
+    return f"{team_a} {expected_goal_difference:+.2f}"
+
+
+def _boxed_summary(
+    team_a: str,
+    team_b: str,
+    best: RankedTip,
+) -> list[str]:
+    title = f"{team_a} vs {team_b}"
+    lines = [
+        f"Pick: {team_a} {_display_score(best['score'])} {team_b}",
+        (
+            f"Confidence: {_tendency_label(best['score'], team_a, team_b)} "
+            f"{_compact_probability(best['tendency_probability'])}"
+        ),
+        f"Exact score probability: {_compact_probability(best['exact_probability'])}",
+        f"Expected points: {best['expected_points']:.2f}",
+    ]
+    width = max(53, len(title) + 4, *(len(line) for line in lines))
+    top = f"┌─ {title} " + "─" * max(1, width - len(title) - 1) + "┐"
+    bottom = "└" + "─" * (width + 2) + "┘"
+    return [
+        _color(top, "1", "36"),
+        *(f"│ {line.ljust(width)} │" for line in lines),
+        _color(bottom, "1", "36"),
+    ]
+
+
 def _tendency_label(score: tuple[int, int], team_a: str, team_b: str) -> str:
     goals_a, goals_b = score
     if goals_a > goals_b:
@@ -541,10 +598,6 @@ def run_predict(args: argparse.Namespace) -> int:
     tips = rank_tips(matrix, tip_max_goals=args.tip_max_goals)
     best = tips[0]
     top_tips = tips[:5]
-    top_tendency_labels = {
-        _tendency_label(tip["score"], args.team_a, args.team_b) for tip in top_tips
-    }
-    show_tendency_per_tip = len(top_tendency_labels) > 1
 
     if getattr(args, "output_json", False):
         payload = _prediction_payload(
@@ -558,44 +611,34 @@ def run_predict(args: argparse.Namespace) -> int:
         print(_format_score(best["score"]))
         return 0
 
-    print(f"Match: {args.team_a} vs {args.team_b}")
-    print("Data sources:")
-    print(f"* 1X2 probabilities: {probabilities.source}")
-    print(f"* Expected goals: {goals_source}")
-    if probabilities.goal_difference_source is not None:
-        print(f"* Handicap/spread: {probabilities.goal_difference_source}")
-    print(f"* Elo: {elo.source}")
-    print()
-    print(f"Recommended tip: {_format_score(best['score'])}")
-    print(f"Expected points: {best['expected_points']:.2f}")
-    print(
-        f"Probability of exactly {_format_score(best['score'])}: "
-        f"{_probability(best['exact_probability'])}"
-    )
-    print(
-        f"Outcome {_tendency_label(best['score'], args.team_a, args.team_b)}: "
-        f"{_probability(best['tendency_probability'])}"
-    )
-    print()
-    print("Top 5 tips:")
-    if not show_tendency_per_tip:
-        first_tip = top_tips[0]
-        print(
-            f"Top 5 outcome: "
-            f"{_tendency_label(first_tip['score'], args.team_a, args.team_b)} "
-            f"({_probability(first_tip['tendency_probability'])})"
-        )
-    for index, tip in enumerate(top_tips, start=1):
-        line = (
-            f"{index}. {_format_score(tip['score'])} - EV {tip['expected_points']:.2f} "
-            f"- exact score {_probability(tip['exact_probability'])}"
-        )
-        if show_tendency_per_tip:
-            line += (
-                f" - outcome {_tendency_label(tip['score'], args.team_a, args.team_b)} "
-                f"({_probability(tip['tendency_probability'])})"
-            )
+    for line in _boxed_summary(args.team_a, args.team_b, best):
         print(line)
+    print()
+    print(_color("Key model signals", "1", "36"))
+    print(
+        f"  {'xG':<15} {args.team_a} {lambda_a:.2f}   "
+        f"{args.team_b} {lambda_b:.2f}"
+    )
+    print(f"  {'Total goals':<15} {total_goals:.2f}")
+    print(
+        f"  {'Handicap':<15} "
+        f"{_format_handicap_line(probabilities.expected_goal_difference, args.team_a)}"
+    )
+    print(f"  {'Elo':<15} {_format_elo_signal(elo, args.team_a)}")
+    print()
+    print(_color("1X2 probabilities", "1", "36"))
+    print(f"  {args.team_a:<15} {_compact_probability(probabilities.p_a)}")
+    print(f"  {'Draw':<15} {_compact_probability(probabilities.p_draw)}")
+    print(f"  {args.team_b:<15} {_compact_probability(probabilities.p_b)}")
+    print()
+    print(_color("Top scorelines", "1", "36"))
+    for index, tip in enumerate(top_tips, start=1):
+        print(
+            f"  {index}. {_display_score(tip['score'])}  "
+            f"{_tendency_label(tip['score'], args.team_a, args.team_b)}   "
+            f"EV {tip['expected_points']:.2f}   "
+            f"Prob {_compact_probability(tip['exact_probability']):>5}"
+        )
 
     return 0
 

@@ -1,11 +1,18 @@
 import argparse
 import json
+import re
 
 import pytest
 import requests
 
 import kicktipp_tool
 from models import EloResult, ProbabilityResult
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    return ANSI_RE.sub("", text)
 
 
 def test_odds_api_request_exception_exits_cleanly(monkeypatch):
@@ -412,12 +419,102 @@ def test_predict_output_explains_exact_probability_and_summarizes_tendency(
     assert kicktipp_tool.run_predict(args) == 0
 
     output = capsys.readouterr().out
-    assert "Probability of exactly 2:0: 17.6 %" in output
-    assert "Outcome Mexico win: 72.3 %" in output
-    assert "Top 5 outcome: Mexico win (72.3 %)" in output
-    assert "1. 2:0 - EV 1.86 - exact score 17.6 %" in output
+    plain_output = _plain(output)
+    assert "\x1b[" in output
+    assert "┌─ Mexico vs South Africa" in plain_output
+    assert "│ Pick: Mexico 2–0 South Africa" in plain_output
+    assert "│ Confidence: Mexico win 72.3%" in plain_output
+    assert "│ Exact score probability: 17.6%" in plain_output
+    assert "│ Expected points: 1.86" in plain_output
+    assert "└" in plain_output
+    assert "Key model signals" in plain_output
+    assert "xG              Mexico 1.60   South Africa 0.80" in plain_output
+    assert "Total goals     2.48" in plain_output
+    assert "Handicap        not available" in plain_output
+    assert "Elo             neutral / unavailable" in plain_output
+    assert "1X2 probabilities" in plain_output
+    assert "Mexico          62.0%" in plain_output
+    assert "Draw            22.0%" in plain_output
+    assert "South Africa    16.0%" in plain_output
+    assert "Sources:" not in plain_output
+    assert "* 1X2 probabilities: Test odds" not in plain_output
+    assert "* Expected goals: Test totals" not in plain_output
+    assert "Top 5 tips:" not in plain_output
+    assert "Top 5 outcome" not in plain_output
+    assert "Top scorelines" in plain_output
+    assert "1. 2–0  Mexico win   EV 1.86   Prob 17.6%" in plain_output
     assert "exakt" not in output
-    assert output.count("Outcome") == 1
+
+
+def test_predict_output_shows_elo_values_not_elo_source_url(monkeypatch, capsys):
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_probabilities",
+        lambda args: ProbabilityResult(
+            0.86,
+            0.09,
+            0.05,
+            "Test odds",
+            expected_total_goals=3.5,
+            total_goals_source="Test totals",
+            expected_goal_difference=2.5,
+            goal_difference_source="Test spreads",
+        ),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_total_goals",
+        lambda args, probabilities: (3.5, "Test totals"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "_resolve_elo",
+        lambda args: EloResult(1900, 1650, "https://example.test/elo"),
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "infer_expected_goals_from_market_difference",
+        lambda *args: (3.0, 0.5),
+    )
+    monkeypatch.setattr(kicktipp_tool, "build_score_matrix", lambda *args: {})
+    monkeypatch.setattr(
+        kicktipp_tool, "apply_low_score_adjustment", lambda matrix, rho: matrix
+    )
+    monkeypatch.setattr(
+        kicktipp_tool,
+        "rank_tips",
+        lambda matrix, tip_max_goals: [
+            {
+                "score": (4, 0),
+                "expected_points": 2.10,
+                "exact_probability": 0.14,
+                "tendency_probability": 0.88,
+            }
+        ],
+    )
+    args = argparse.Namespace(
+        team_a="Portugal",
+        team_b="DR Congo",
+        max_goals=8,
+        tip_max_goals=5,
+        rho=-0.08,
+        output_json=False,
+        quiet=False,
+    )
+
+    assert kicktipp_tool.run_predict(args) == 0
+
+    plain_output = _plain(capsys.readouterr().out)
+    model_inputs = plain_output.split("Key model signals", 1)[1].split(
+        "1X2 probabilities", 1
+    )[0]
+    assert "xG              Portugal 3.00   DR Congo 0.50" in model_inputs
+    assert "Handicap        Portugal +2.50" in model_inputs
+    assert "Elo             Portugal +250" in model_inputs
+    assert "https://example.test/elo" not in model_inputs
+    assert "Sources:" not in plain_output
+    assert "https://example.test/elo" not in plain_output
+    assert "Top 5 tips:" not in plain_output
 
 
 def test_predict_json_output(monkeypatch, capsys):
