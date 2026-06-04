@@ -13,7 +13,7 @@ football competitions when the configured data sources support them.
 Use this prompt as the default match prediction request:
 
 ```bash
-predict --team-a "some team" --team-b "another team" --match-date 2026-06-11
+python kicktipp_tool.py predict --team-a "some team" --team-b "another team" --match-date 2026-06-11
 ```
 
 When running directly from this checkout, use the same arguments after the
