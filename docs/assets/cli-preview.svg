@@ -2,17 +2,13 @@
   <title id="title">Kicktipp World Cup Predictor CLI output preview</title>
   <desc id="desc">Terminal preview showing the actual output of a Netherlands versus Japan prediction run.</desc>
   <defs>
-    <linearGradient id="terminal-bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#121820"/>
-      <stop offset="1" stop-color="#0b1017"/>
-    </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#0b1020" flood-opacity="0.28"/>
     </filter>
   </defs>
 
   <g filter="url(#shadow)">
-    <rect x="48" y="42" width="824" height="676" rx="10" fill="url(#terminal-bg)"/>
+    <rect x="48" y="42" width="824" height="676" rx="10" fill="#0f1720"/>
     <rect x="48.5" y="42.5" width="823" height="675" rx="9.5" fill="none" stroke="#25313f"/>
     <rect x="48" y="42" width="824" height="44" rx="10" fill="#1d2630"/>
     <path d="M48 76h824v18H48z" fill="#1d2630"/>
