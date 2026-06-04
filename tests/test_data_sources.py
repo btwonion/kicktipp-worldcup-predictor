@@ -199,6 +199,70 @@ def test_team_matching_handles_aliases_and_accents():
     assert team_names_match("Côte d'Ivoire", ["Cote d Ivoire"])
 
 
+@pytest.mark.parametrize(
+    ("expected_name", "candidates"),
+    [
+        ("Algeria", ["ALG", "Algerien"]),
+        ("Argentina", ["ARG", "Argentinien"]),
+        ("Australia", ["AUS", "Australien"]),
+        ("Austria", ["AUT", "Österreich"]),
+        ("Belgium", ["BEL", "Belgien"]),
+        ("Bosnia and Herzegovina", ["BIH", "Bosnien-Herzegowina"]),
+        ("Brazil", ["BRA", "Brasilien"]),
+        ("Cabo Verde", ["CPV", "Cape Verde", "Kap Verde"]),
+        ("Canada", ["CAN", "Kanada"]),
+        ("Colombia", ["COL", "Kolumbien"]),
+        ("Congo DR", ["COD", "DR Congo", "Democratic Republic of Congo"]),
+        ("Côte d'Ivoire", ["CIV", "Ivory Coast", "Elfenbeinküste"]),
+        ("Curaçao", ["CUW", "Curacao", "Curazao"]),
+        ("Croatia", ["CRO", "Kroatien"]),
+        ("Czechia", ["CZE", "Czech Republic", "Tschechien"]),
+        ("Ecuador", ["ECU"]),
+        ("Egypt", ["EGY", "Ägypten"]),
+        ("England", ["ENG", "England"]),
+        ("France", ["FRA", "Frankreich"]),
+        ("Germany", ["GER", "Deutschland"]),
+        ("Ghana", ["GHA"]),
+        ("Haiti", ["HAI", "Haïti"]),
+        ("IR Iran", ["IRN", "Iran", "Islamic Republic of Iran"]),
+        ("Iraq", ["IRQ", "Irak"]),
+        ("Japan", ["JPN"]),
+        ("Jordan", ["JOR", "Jordanien"]),
+        ("Korea Republic", ["KOR", "South Korea", "Südkorea"]),
+        ("Mexico", ["MEX", "Mexiko"]),
+        ("Morocco", ["MAR", "Marokko"]),
+        ("Netherlands", ["NED", "Niederlande"]),
+        ("New Zealand", ["NZL", "Neuseeland"]),
+        ("Norway", ["NOR", "Norwegen"]),
+        ("Panama", ["PAN", "Panamá"]),
+        ("Paraguay", ["PAR"]),
+        ("Portugal", ["POR"]),
+        ("Qatar", ["QAT", "Katar"]),
+        ("Saudi Arabia", ["KSA", "Saudi-Arabien"]),
+        ("Scotland", ["SCO", "Schottland"]),
+        ("Senegal", ["SEN"]),
+        ("South Africa", ["RSA", "Südafrika"]),
+        ("Spain", ["ESP", "Spanien"]),
+        ("Sweden", ["SWE", "Schweden"]),
+        ("Switzerland", ["SUI", "Schweiz"]),
+        ("Tunisia", ["TUN", "Tunesien"]),
+        ("Türkiye", ["TUR", "Turkey", "Türkei"]),
+        ("Uruguay", ["URU"]),
+        ("USA", ["United States", "United States of America"]),
+        ("Uzbekistan", ["UZB", "Usbekistan"]),
+    ],
+)
+def test_team_matching_handles_world_cup_2026_participant_aliases(
+    expected_name, candidates
+):
+    assert team_names_match(expected_name, candidates)
+
+
+def test_team_matching_does_not_fuzzy_match_short_country_codes():
+    assert not team_names_match("USA", ["AUS"])
+    assert not team_names_match("IRN", ["IRQ"])
+
+
 def test_odds_api_default_uses_valid_world_cup_sport_key(tmp_path, monkeypatch):
     class FakeResponse:
         def raise_for_status(self):
