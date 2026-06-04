@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import math
+
+
+Score = tuple[int, int]
+
+
+def poisson_pmf(k: int, lambda_: float) -> float:
+    if k < 0:
+        raise ValueError("k muss >= 0 sein.")
+    if lambda_ <= 0:
+        raise ValueError("lambda_ muss > 0 sein.")
+    return math.exp(-lambda_) * (lambda_**k) / math.factorial(k)
+
+
+def _normalize(score_matrix: dict[Score, float]) -> dict[Score, float]:
+    total = sum(score_matrix.values())
+    if total <= 0:
+        raise ValueError("Score-Matrix hat keine positive Gesamtwahrscheinlichkeit.")
+    return {score: probability / total for score, probability in score_matrix.items()}
+
+
+def build_score_matrix(
+    lambda_a: float, lambda_b: float, max_goals: int
+) -> dict[Score, float]:
+    if lambda_a <= 0 or lambda_b <= 0:
+        raise ValueError("lambda_a und lambda_b müssen > 0 sein.")
+    if max_goals < 4:
+        raise ValueError("max_goals muss mindestens 4 sein.")
+
+    matrix: dict[Score, float] = {}
+    for goals_a in range(max_goals + 1):
+        p_a = poisson_pmf(goals_a, lambda_a)
+        for goals_b in range(max_goals + 1):
+            matrix[(goals_a, goals_b)] = p_a * poisson_pmf(goals_b, lambda_b)
+    return _normalize(matrix)
+
+
+def infer_expected_goals(
+    p_a: float,
+    p_draw: float,
+    p_b: float,
+    total_goals: float,
+    elo_a: float | None = None,
+    elo_b: float | None = None,
+) -> tuple[float, float]:
+    for name, value in {"p_a": p_a, "p_draw": p_draw, "p_b": p_b}.items():
+        if not 0 <= value <= 1:
+            raise ValueError(f"{name} muss zwischen 0 und 1 liegen.")
+    probability_sum = p_a + p_draw + p_b
+    if not math.isclose(probability_sum, 1.0, abs_tol=0.04):
+        raise ValueError("1X2-Wahrscheinlichkeiten müssen ungefähr 1 ergeben.")
+    if total_goals <= 0:
+        raise ValueError("total_goals muss > 0 sein.")
+
+    normalized_p_a = p_a / probability_sum
+    normalized_p_b = p_b / probability_sum
+
+    market_signal = math.log((normalized_p_a + 0.08) / (normalized_p_b + 0.08))
+    elo_signal = 0.0
+    if elo_a is not None and elo_b is not None:
+        elo_signal = (elo_a - elo_b) / 400.0 * math.log(10)
+
+    combined_signal = market_signal + 0.25 * elo_signal
+    share_a = 1 / (1 + math.exp(-combined_signal))
+
+    # Avoid unrealistic zero-attack estimates while keeping the requested total.
+    share_a = min(max(share_a, 0.18), 0.82)
+    lambda_a = total_goals * share_a
+    lambda_b = total_goals - lambda_a
+    return lambda_a, lambda_b
+
+
+def apply_low_score_adjustment(
+    score_matrix: dict[Score, float], rho: float = -0.08
+) -> dict[Score, float]:
+    adjusted = dict(score_matrix)
+
+    # Dixon-Coles-style small correction for the most common low-score cells.
+    intensity = 2.5
+    factors = {
+        (0, 0): 1 - intensity * rho,
+        (0, 1): 1 + intensity * rho,
+        (1, 0): 1 + intensity * rho,
+        (1, 1): 1 - intensity * rho,
+    }
+    for score, factor in factors.items():
+        if score in adjusted:
+            adjusted[score] = max(0.0, adjusted[score] * factor)
+
+    return _normalize(adjusted)
