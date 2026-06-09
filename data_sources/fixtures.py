@@ -125,6 +125,9 @@ def _fixtures_from_openfootball_payload(payload: Any) -> list[dict[str, Any]]:
                 ),
                 "raw": match,
             }
+            group = match.get("group") or round_item.get("group")
+            if group:
+                fixture["group"] = group
             time = match.get("time") or match.get("kickoff")
             if time:
                 fixture["time"] = time

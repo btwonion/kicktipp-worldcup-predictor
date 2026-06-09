@@ -5,7 +5,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,13 @@ PENDING_TEAM_RE = re.compile(
     r"|^\s*[WL]\d+\s*$",
     re.IGNORECASE,
 )
+KNOCKOUT_PLAYDAY_STAGES = {
+    4: ("Round of 32",),
+    5: ("Round of 16",),
+    6: ("Quarter-final",),
+    7: ("Semi-final",),
+    8: ("Final",),
+}
 
 
 @dataclass(frozen=True)
@@ -293,7 +300,10 @@ def _add_predict_day_parser(subparsers: argparse._SubParsersAction) -> None:
         "--match-day",
         "--play-day",
         dest="match_day",
-        help='Match day or round, e.g. "1", "Match day 1", or "Semi-finals".',
+        help=(
+            'Tipping match day or round, e.g. "1", "Match day 1", '
+            'or "Semi-finals".'
+        ),
     )
     selector.add_argument("--date", help="Fixture date in YYYY-MM-DD format.")
     parser.add_argument(
@@ -797,30 +807,120 @@ def _normalize_selector(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.casefold())
 
 
-def _fixture_matches_selection(
+def _stage_selector_key(value: str) -> str:
+    key = _normalize_selector(value).replace("of", "")
+    if key.endswith("s"):
+        key = key[:-1]
+    return key
+
+
+def _playday_number(value: str | None) -> int | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if stripped.isdigit():
+        return int(stripped)
+    match = re.search(
+        r"\b(?:match\s*day|matchday|spieltag)\s*0*(\d+)\b",
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _fixture_matches_stage_selection(
     fixture: dict[str, Any],
     *,
-    match_day: str | None,
-    date: str | None,
+    selector: str,
 ) -> bool:
-    if date is not None:
-        return fixture.get("date") == date
-
-    if match_day is None:
-        return False
-
     stage = str(fixture.get("stage") or "")
-    selector = match_day.strip()
-    if selector.isdigit():
-        pattern = rf"\b(match\s*day|matchday|spieltag)\s*{re.escape(selector)}\b"
-        return bool(re.search(pattern, stage, flags=re.IGNORECASE))
+    return _stage_selector_key(selector.strip()) == _stage_selector_key(stage)
 
-    normalized_selector = _normalize_selector(selector)
-    normalized_stage = _normalize_selector(stage)
-    return (
-        normalized_selector in normalized_stage
-        or normalized_stage in normalized_selector
+
+def _fixture_group(fixture: dict[str, Any]) -> str | None:
+    group = fixture.get("group") or (fixture.get("raw") or {}).get("group")
+    return str(group) if group else None
+
+
+def _fixture_sort_key(fixture: dict[str, Any]) -> tuple[int, Any, str, str, str]:
+    date = str(fixture.get("date") or "")
+    time = str(fixture.get("time") or "")
+    match = re.match(
+        r"^\s*(\d{1,2}):(\d{2})(?:\s*UTC([+-]\d{1,2})(?::?(\d{2}))?)?\s*$",
+        time,
     )
+    if date and match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        offset_hours = match.group(3)
+        if offset_hours is not None:
+            offset_minutes = int(match.group(4) or "0")
+            offset_delta = timedelta(
+                hours=int(offset_hours),
+                minutes=offset_minutes if int(offset_hours) >= 0 else -offset_minutes,
+            )
+            kickoff = datetime.fromisoformat(date).replace(
+                hour=hour,
+                minute=minute,
+                tzinfo=timezone(offset_delta),
+            )
+            return (0, kickoff.astimezone(timezone.utc), "", "", "")
+    return (
+        1,
+        date,
+        time,
+        str(fixture.get("stage") or ""),
+        _fixture_match_text(fixture),
+    )
+
+
+def _select_group_playday_fixtures(
+    fixtures: list[dict[str, Any]],
+    playday: int,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    group_fixtures: dict[str, list[dict[str, Any]]] = {}
+    for fixture in fixtures:
+        group = _fixture_group(fixture)
+        if group is None:
+            continue
+        group_fixtures.setdefault(group, []).append(fixture)
+
+    for group in sorted(group_fixtures):
+        team_match_counts: dict[str, int] = {}
+        for fixture in group_fixtures[group]:
+            team_a = str(fixture["team_a"])
+            team_b = str(fixture["team_b"])
+            if (
+                team_match_counts.get(team_a, 0) == playday - 1
+                and team_match_counts.get(team_b, 0) == playday - 1
+            ):
+                selected.append(fixture)
+            team_match_counts[team_a] = team_match_counts.get(team_a, 0) + 1
+            team_match_counts[team_b] = team_match_counts.get(team_b, 0) + 1
+
+    return sorted(selected, key=_fixture_sort_key)
+
+
+def _select_playday_fixtures(
+    fixtures: list[dict[str, Any]],
+    playday: int,
+) -> list[dict[str, Any]]:
+    if playday <= 3:
+        return _select_group_playday_fixtures(fixtures, playday)
+
+    stages = KNOCKOUT_PLAYDAY_STAGES.get(playday)
+    if stages is None:
+        return []
+    normalized_stages = {_stage_selector_key(stage) for stage in stages}
+    selected = [
+        fixture
+        for fixture in fixtures
+        if _stage_selector_key(str(fixture.get("stage") or "")) in normalized_stages
+    ]
+    return sorted(selected, key=_fixture_sort_key)
 
 
 def _is_pending_team(team_name: str) -> bool:
@@ -846,6 +946,9 @@ def _selection_label(
     args: argparse.Namespace,
     selected_fixtures: list[dict[str, Any]],
 ) -> str:
+    playday = _playday_number(args.match_day)
+    if playday is not None:
+        return f"Matchday {playday}"
     if selected_fixtures and selected_fixtures[0].get("stage"):
         return str(selected_fixtures[0]["stage"])
     if args.match_day:
@@ -873,6 +976,7 @@ def _pending_payload(fixture: dict[str, Any]) -> dict[str, Any]:
         "date": fixture.get("date"),
         "time": fixture.get("time"),
         "stage": fixture.get("stage"),
+        "group": fixture.get("group"),
     }
 
 
@@ -883,15 +987,24 @@ def _build_predict_day_payload(args: argparse.Namespace) -> dict[str, Any]:
         cache_dir=args.cache_dir,
         no_cache=args.no_cache,
     )
-    selected = [
-        fixture
-        for fixture in fixtures
-        if _fixture_matches_selection(
-            fixture,
-            match_day=args.match_day,
-            date=args.date,
-        )
-    ]
+    if args.date is not None:
+        selected = [
+            fixture for fixture in fixtures if fixture.get("date") == args.date
+        ]
+    else:
+        playday = _playday_number(args.match_day)
+        if playday is not None:
+            selected = _select_playday_fixtures(fixtures, playday)
+        else:
+            selected = [
+                fixture
+                for fixture in fixtures
+                if _fixture_matches_stage_selection(
+                    fixture,
+                    selector=args.match_day,
+                )
+            ]
+            selected = sorted(selected, key=_fixture_sort_key)
     if not selected:
         selector = args.match_day or args.date
         raise SystemExit(f"No fixtures found for {selector}.")

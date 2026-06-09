@@ -701,7 +701,7 @@ def test_predict_quiet_output(monkeypatch, capsys):
     assert capsys.readouterr().out == "2:0\n"
 
 
-def test_predict_day_matches_loose_match_day_and_displays_pending(
+def test_predict_day_selects_first_group_fixtures_and_displays_pending(
     tmp_path, capsys
 ):
     fixture_file = tmp_path / "fixtures.json"
@@ -715,17 +715,57 @@ def test_predict_day_matches_loose_match_day_and_displays_pending(
                             {
                                 "date": "2026-06-11",
                                 "time": "18:00",
+                                "group": "Group A",
                                 "team1": "Mexico",
                                 "team2": "South Africa",
                             },
                             {
                                 "date": "2026-06-11",
                                 "time": "21:00",
+                                "group": "Group A",
                                 "team1": "Winner Group A",
                                 "team2": "Runner-up Group B",
                             },
                         ],
-                    }
+                    },
+                    {
+                        "name": "Matchday 2",
+                        "matches": [
+                            {
+                                "date": "2026-06-12",
+                                "time": "18:00",
+                                "group": "Group B",
+                                "team1": "Canada",
+                                "team2": "Bosnia & Herzegovina",
+                            },
+                            {
+                                "date": "2026-06-13",
+                                "time": "12:00",
+                                "group": "Group B",
+                                "team1": "Qatar",
+                                "team2": "Switzerland",
+                            },
+                        ],
+                    },
+                    {
+                        "name": "Matchday 8",
+                        "matches": [
+                            {
+                                "date": "2026-06-18",
+                                "time": "12:00",
+                                "group": "Group A",
+                                "team1": "Czech Republic",
+                                "team2": "South Africa",
+                            },
+                            {
+                                "date": "2026-06-18",
+                                "time": "19:00",
+                                "group": "Group A",
+                                "team1": "Mexico",
+                                "team2": "South Korea",
+                            },
+                        ],
+                    },
                 ]
             }
         ),
@@ -737,7 +777,7 @@ def test_predict_day_matches_loose_match_day_and_displays_pending(
             [
                 "predict-day",
                 "--match-day",
-                "1",
+                "Matchday 1",
                 "--fixtures",
                 str(fixture_file),
                 "--p-a",
@@ -755,9 +795,13 @@ def test_predict_day_matches_loose_match_day_and_displays_pending(
     )
 
     output = _plain(capsys.readouterr().out)
-    assert "Predictions for Match day 1" in output
+    assert "Predictions for Matchday 1" in output
     assert "Ready fixtures" in output
     assert "18:00  Mexico vs South Africa" in output
+    assert "18:00  Canada vs Bosnia & Herzegovina" in output
+    assert "12:00  Qatar vs Switzerland" in output
+    assert "Czech Republic vs South Africa" not in output
+    assert "Mexico vs South Korea" not in output
     assert "EV" in output
     assert "Pending fixtures" in output
     assert "21:00  Winner Group A vs Runner-up Group B" in output
@@ -808,6 +852,53 @@ def test_predict_day_writes_markdown_report(tmp_path, capsys):
     assert "# Predictions for Semi-finals" in report
     assert "No ready fixtures to predict yet." in report
     assert "- 21:00  Winner Quarter-final 1 vs Winner Quarter-final 2" in report
+
+
+def test_predict_day_numeric_knockout_playday_selects_bracket_round(
+    tmp_path, capsys
+):
+    fixture_file = tmp_path / "fixtures.json"
+    fixture_file.write_text(
+        json.dumps(
+            {
+                "matches": [
+                    {
+                        "round": "Round of 32",
+                        "date": "2026-07-01",
+                        "time": "13:00 UTC-7",
+                        "team1": "1G",
+                        "team2": "3A/E/H/I/J",
+                    },
+                    {
+                        "round": "Round of 16",
+                        "date": "2026-07-04",
+                        "time": "20:00 UTC-4",
+                        "team1": "W82",
+                        "team2": "W83",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        kicktipp_tool.main(
+            [
+                "predict-day",
+                "--match-day",
+                "4",
+                "--fixtures",
+                str(fixture_file),
+            ]
+        )
+        == 0
+    )
+
+    output = _plain(capsys.readouterr().out)
+    assert "Predictions for Matchday 4" in output
+    assert "13:00 UTC-7  1G vs 3A/E/H/I/J" in output
+    assert "W82 vs W83" not in output
 
 
 def test_predict_day_treats_openfootball_knockout_codes_as_pending(

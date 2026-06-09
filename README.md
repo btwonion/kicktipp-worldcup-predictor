@@ -220,16 +220,29 @@ python kicktipp_tool.py predict-day --match-day "Match day 1"
 ```
 
 The command loads the cached 2026 World Cup fixture schedule, selects the
-requested match day or round, and predicts every fixture whose teams are known.
-Match days and rounds are based on the `round` names in the fixture file, such
-as `Matchday 1`, `Round of 32`, `Semi-final`, and `Final`.
-Input matching is intentionally loose, so these are equivalent for the group
-phase:
+requested tipping match day or round, and predicts every fixture whose teams are
+known. During the group phase, match days mean each country's first, second, or
+third group fixture. After the group phase, numeric match days continue through
+the bracket:
+
+- `1`: first group fixtures
+- `2`: second group fixtures
+- `3`: third group fixtures
+- `4`: Round of 32
+- `5`: Round of 16
+- `6`: Quarter-finals
+- `7`: Semi-finals
+- `8`: Final
+
+Input matching is intentionally loose, so these are equivalent:
 
 ```bash
 python kicktipp_tool.py predict-day --match-day 1
 python kicktipp_tool.py predict-day --match-day "Match day 1"
 ```
+
+You can also select an explicit fixture-stage name, such as `Round of 32`,
+`Semi-final`, or `Match for third place`.
 
 Knockout fixtures whose teams are not known yet are displayed as pending instead
 of being predicted:
